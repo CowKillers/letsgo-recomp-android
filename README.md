@@ -6,6 +6,8 @@ Testado no Galaxy S23 (Snapdragon 8 Gen 2, Adreno 740, Android 16).
 
 > **Uso pessoal. Este repositório NÃO contém o jogo, nem código do jogo, nem chaves.**
 > Para buildar você precisa do seu próprio dump legalmente obtido (ver [BUILD.md](BUILD.md)).
+>
+> 📺 Canal da autora no YouTube: https://youtube.com/@emuucheck
 
 ## O que este repositório contém
 
