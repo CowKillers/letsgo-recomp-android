@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.letsgorecomp"
+    android:versionCode="1792949803"
+    android:versionName="0.1.0-boot">
+
+    <!-- Vulkan 1.3 is required by the NVN-on-Vulkan renderer -->
+    <uses-feature android:name="android.hardware.vulkan.version" android:required="true" />
+    <uses-feature android:name="android.hardware.vulkan.version" android:version="4194307" android:required="true" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="34" />
+
+    <!-- Full filesystem access: the game reads exefs/romfs via direct fopen() -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+                     android:maxSdkVersion="29" />
+
+    <application android:label="Let's Go Recomp"
+                 android:icon="@drawable/icon"
+                 android:allowBackup="true"
+                 android:extractNativeLibs="true"
+                 android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+                 android:hardwareAccelerated="true">
+        <activity android:name="com.letsgorecomp.LetsGoLauncherActivity"
+                  android:label="Let's Go Recomp"
+                  android:screenOrientation="landscape"
+                  android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity android:name="com.letsgorecomp.LogActivity"
+                  android:label="Log"
+                  android:screenOrientation="landscape"
+                  android:exported="false" />
+        <activity android:name="com.letsgorecomp.LetsGoActivity"
+                  android:label="Let's Go Recomp"
+                  android:theme="@style/Fullscreen"
+                  android:alwaysRetainTaskState="true"
+                  android:launchMode="singleTask"
+                  android:screenOrientation="landscape"
+                  android:configChanges="layoutDirection|locale|grammaticalGender|fontScale|fontWeightAdjustment|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|density|keyboard|keyboardHidden|navigation"
+                  android:exported="false" />
+    </application>
+</manifest>
