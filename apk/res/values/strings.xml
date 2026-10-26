@@ -76,4 +76,5 @@ Pasta: </string>
     <string name="step2">Jogar</string>
     <string name="locked">Disponível quando a etapa 1 terminar.</string>
     <string name="ready_hint">Se o jogo fechar ao abrir, use "Ver log" em Avançado e me envie o conteúdo.</string>
+    <string name="in_use_driver">Em uso: </string>
 </resources>

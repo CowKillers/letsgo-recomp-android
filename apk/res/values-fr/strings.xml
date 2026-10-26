@@ -75,4 +75,5 @@ Dossier : </string>
     <string name="step2">Jouer</string>
     <string name="locked">Disponible une fois l\'étape 1 terminée.</string>
     <string name="ready_hint">Si le jeu se ferme au démarrage, ouvre « Voir le journal » dans Avancé et envoie son contenu.</string>
+    <string name="in_use_driver">Utilisé : </string>
 </resources>

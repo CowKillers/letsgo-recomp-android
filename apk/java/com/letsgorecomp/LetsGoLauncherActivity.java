@@ -121,7 +121,7 @@ public class LetsGoLauncherActivity extends Activity {
                 GpuDrivers.Driver sel = GpuDrivers.selected(LetsGoLauncherActivity.this);
                 StringBuilder sb = new StringBuilder();
                 if (sel != null) {
-                    sb.append(Txt.t("in_use", "Em uso: driver do sistema"))
+                    sb.append(Txt.t("in_use_driver", "Em uso: "))
                       .append(sel.name).append(" (").append(sel.driverVersion).append(")");
                 } else {
                     sb.append(Txt.t("in_use", "Em uso: driver do sistema"));

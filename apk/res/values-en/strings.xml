@@ -75,4 +75,5 @@ Folder: </string>
     <string name="step2">Play</string>
     <string name="locked">Available once step 1 is done.</string>
     <string name="ready_hint">If the game closes on start, open “View log” under Advanced and send what it says.</string>
+    <string name="in_use_driver">In use: </string>
 </resources>
