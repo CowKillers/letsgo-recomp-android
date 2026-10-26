@@ -33,7 +33,11 @@ done
 wait
 echo "objects: $(ls $OUTDIR/obj/*.o 2>/dev/null | wc -l)"
 [ $fail -ne 0 ] && { echo GAMELIB_BUILD_FAIL; grep -m5 "error:" build-gamelib-errors.log; exit 1; }
-$CC -shared -o $OUTDIR/liblasgame.so $OUTDIR/obj/*.o 2>>build-gamelib-errors.log || { echo LINK_FAIL; exit 1; }
+# The game code calls the runtime's services (runtime/cpu.h: rt_udf, rt_dispatch, g_fnprof...). On Android the
+# game library is opened with RTLD_LOCAL (runtime/gamelib.c), so without an explicit dependency on the runtime
+# the loader has no reason to resolve those symbols and the open fails with "cannot locate symbol g_fnprof".
+$CC -shared -L$ROOT/build/apk-lib -l:liblasrecomp.so \
+    -o $OUTDIR/liblasgame.so $OUTDIR/obj/*.o 2>>build-gamelib-errors.log || { echo LINK_FAIL; exit 1; }
 echo -n "$GAMELIB_ID" > $OUTDIR/liblasgame.so.id
 ls -la $OUTDIR/liblasgame.so
 echo GAMELIB_OK
