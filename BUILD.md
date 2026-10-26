@@ -66,15 +66,7 @@ Se falhar, veja `build-errors.log`.
 
 Gera `build/liblgimport.so` (o importador que roda dentro do app no aparelho).
 
-### Etapa 3 — Biblioteca do jogo
-
-```bash
-./build-gamelib.sh
-```
-
-Gera `build/game/liblasgame.so` (o jogo recompilado) e `GAMELIB_ID.txt`.
-
-### Etapa 4 — Linkar o runtime
+### Etapa 3 — Linkar o runtime
 
 ```bash
 ./link-runtime.sh
@@ -83,6 +75,17 @@ Gera `build/game/liblasgame.so` (o jogo recompilado) e `GAMELIB_ID.txt`.
 Gera `build/apk-lib/liblasrecomp.so`. Espere **`RUNTIME_LINK_OK`**.
 Se falhar, veja `link-runtime-errors.log`.
 Nota: o link inclui `-ladrenotools` (DT_NEEDED) para o suporte a driver Turnip.
+
+### Etapa 4 — Biblioteca do jogo
+
+```bash
+./build-gamelib.sh
+```
+
+Gera `build/game/liblasgame.so` (o jogo recompilado) e `GAMELIB_ID.txt`.
+Roda **depois** do runtime: a biblioteca do jogo é linkada contra `liblasrecomp.so`
+(DT_NEEDED), porque no Android ela é aberta com `RTLD_LOCAL` e o loader só resolve
+os símbolos dela pela própria lista de dependências.
 
 ### Etapa 5 — Montar e assinar o APK (sem Gradle)
 
