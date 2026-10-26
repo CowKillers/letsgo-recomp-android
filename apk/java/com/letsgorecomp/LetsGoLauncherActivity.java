@@ -14,7 +14,6 @@ import android.widget.ArrayAdapter;
 import android.widget.TextView;
 
 import java.io.File;
-import java.io.FileWriter;
 
 // Main launcher: status, Play, and the log viewer/exporter.
 // The SDL game runs in LetsGoActivity; if it crashes, this launcher survives
@@ -298,6 +297,42 @@ public class LetsGoLauncherActivity extends Activity {
         });
         root.addView(resSpinner, lp(-1, -2));
 
+        // Game language: the game's RomFS has every language's texts (bin/message/<language>/: English, French,
+        // Spanish...), and a dump from any region is the same game. The runtime tells the game larecomp.ini's
+        // game_lang (runtime/mods.c game_language); empty = English, which is also what a fan translation that
+        // replaces the English/ folder (PT-BR) needs. An installed mod that carries its own language still wins.
+        TextView langLabel = new TextView(this);
+        langLabel.setText("Idioma do jogo:");
+        langLabel.setTextColor(Color.rgb(200, 210, 220));
+        root.addView(langLabel, lp(-1, -2));
+
+        final android.widget.Spinner langSpinner = new android.widget.Spinner(this);
+        final String[] langNames = {"Padrão (inglês / tradução PT-BR)", "English", "Français", "Español", "Deutsch",
+                                    "Italiano", "日本語", "한국어", "简体中文", "繁體中文"};
+        final String[] langValues = {"", "en-US", "fr", "es", "de", "it", "ja", "ko", "zh-CN", "zh-TW"};
+        android.widget.ArrayAdapter<String> langAdapter = new android.widget.ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_item, langNames);
+        langAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        langSpinner.setAdapter(langAdapter);
+        String savedLang = readIniValue("game_lang");
+        for (int i = 0; i < langValues.length; i++) {
+            if (langValues[i].equals(savedLang == null ? "" : savedLang)) {
+                langSpinner.setSelection(i);
+                break;
+            }
+        }
+        langSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(android.widget.AdapterView<?> parent, android.view.View view, int position, long id) {
+                String cur = readIniValue("game_lang");
+                if (langValues[position].equals(cur == null ? "" : cur)) return;  // (the initial selection)
+                java.util.LinkedHashMap<String, String> kv = new java.util.LinkedHashMap<>();
+                kv.put("game_lang", langValues[position]);
+                updateIni(kv);
+            }
+            @Override public void onNothingSelected(android.widget.AdapterView<?> parent) {}
+        });
+        root.addView(langSpinner, lp(-1, -2));
+
         final CheckBox wild = new CheckBox(this);
         wild.setText("Batalhas selvagens (experimental)");
         wild.setTextColor(Color.rgb(200, 210, 220));
@@ -468,39 +503,79 @@ public class LetsGoLauncherActivity extends Activity {
         return new LinearLayout.LayoutParams(w, h);
     }
 
-    /** Read fps/smaa/wild from larecomp.ini in the game folder, or null. */
-    private String[] readIni() {
+    private File iniFile() {
+        String dir = gameDir(this);
+        return new File(dir != null ? dir : getFilesDir().getAbsolutePath(), "larecomp.ini");
+    }
+
+    /** One key's value in larecomp.ini ("key = value", the runtime's format), or null if absent. */
+    private String readIniValue(String key) {
         try {
-            String dir = gameDir(this);
-            File ini = new File(dir != null ? dir : getFilesDir().getAbsolutePath(),
-                                "larecomp.ini");
+            File ini = iniFile();
             if (!ini.exists()) return null;
-            String fps = "30", smaa = "1", wild = "0";
-            java.util.Scanner sc = new java.util.Scanner(ini);
+            String val = null;
+            java.util.Scanner sc = new java.util.Scanner(ini, "UTF-8");
             while (sc.hasNextLine()) {
                 String l = sc.nextLine().trim();
-                if (l.startsWith("fps = ")) fps = l.substring(6).trim();
-                else if (l.startsWith("smaa = ")) smaa = l.substring(7).trim();
-                else if (l.startsWith("wild_battle = ")) wild = l.substring(14).trim();
+                int eq = l.indexOf('=');
+                if (eq > 0 && l.substring(0, eq).trim().equals(key)) val = l.substring(eq + 1).trim();
             }
             sc.close();
-            return new String[]{fps, smaa, wild};
+            return val;
         } catch (Exception e) { return null; }
     }
 
-    /** Write the game settings to larecomp.ini in the game folder. */
+    /** Read fps/smaa/wild from larecomp.ini in the game folder, or null. */
+    private String[] readIni() {
+        if (!iniFile().exists()) return null;
+        String fps = readIniValue("fps"), smaa = readIniValue("smaa"), wild = readIniValue("wild_battle");
+        return new String[]{fps != null ? fps : "30", smaa != null ? smaa : "1", wild != null ? wild : "0"};
+    }
+
+    /** Write the launcher's game settings to larecomp.ini in the game folder. */
     private void writeIni(String fps, String smaa, String wild) {
+        java.util.LinkedHashMap<String, String> kv = new java.util.LinkedHashMap<>();
+        kv.put("fps", fps);
+        kv.put("smaa", smaa);
+        kv.put("wild_battle", wild);
+        kv.put("fullscreen", "0");
+        updateIni(kv);
+    }
+
+    /** Set some keys of larecomp.ini, keeping every other line (game_lang, mod, render_height, controller
+     *  bindings... the runtime writes them too): the file used to be rewritten with only the launcher's keys. */
+    private void updateIni(java.util.Map<String, String> kv) {
         try {
-            String dir = gameDir(this);
-            File ini = new File(dir != null ? dir : getFilesDir().getAbsolutePath(),
-                                "larecomp.ini");
-            FileWriter w = new FileWriter(ini);
-            w.write("# Let's Go Recomp settings (Android launcher)\n");
-            w.write("fps = " + fps + "\n");
-            w.write("smaa = " + smaa + "\n");
-            w.write("wild_battle = " + wild + "\n");
-            w.write("fullscreen = 0\n");
+            File ini = iniFile();
+            java.util.List<String> lines = new java.util.ArrayList<>();
+            if (ini.exists()) {
+                java.util.Scanner sc = new java.util.Scanner(ini, "UTF-8");
+                while (sc.hasNextLine()) lines.add(sc.nextLine());
+                sc.close();
+            } else {
+                lines.add("# Let's Go Recomp settings (Android launcher)");
+            }
+            java.io.Writer w = new java.io.OutputStreamWriter(new java.io.FileOutputStream(ini), "UTF-8");
+            for (String l : mergeIni(lines, kv)) w.write(l + "\n");
             w.close();
         } catch (Exception ignored) {}
+    }
+
+    /** lines with kv's keys set ("key = value", in place; the missing ones appended), every other line unchanged. */
+    static java.util.List<String> mergeIni(java.util.List<String> lines, java.util.Map<String, String> kv) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        java.util.Set<String> done = new java.util.HashSet<>();
+        for (String l : lines) {
+            int eq = l.indexOf('=');
+            String k = eq > 0 ? l.substring(0, eq).trim() : null;
+            if (k != null && kv.containsKey(k)) {
+                if (done.add(k)) out.add(k + " = " + kv.get(k));  // (a duplicated key: kept once)
+            } else {
+                out.add(l);
+            }
+        }
+        for (java.util.Map.Entry<String, String> e : kv.entrySet())
+            if (!done.contains(e.getKey())) out.add(e.getKey() + " = " + e.getValue());
+        return out;
     }
 }
