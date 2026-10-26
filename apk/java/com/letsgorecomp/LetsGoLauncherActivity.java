@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.view.Gravity;
+import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.CheckBox;
@@ -25,7 +26,7 @@ public class LetsGoLauncherActivity extends Activity {
     private static final int REQ_IMPORT_DRIVER = 1004;
     private static final String PREFS = "letsgo";
     private static final String KEY_GAME_DIR = "game_dir";
-    private TextView status;
+    private HomeScreen home;
     private android.os.Handler importPoller;
     private Runnable importPollTask;
 
@@ -65,6 +66,16 @@ public class LetsGoLauncherActivity extends Activity {
             }
         }
 
+        // The home screen (mock-up design/maquette-accueil.html): header, step 1 (your game),
+        // step 2 (play). The game settings and the driver panel live below it.
+        home = new HomeScreen(this, new HomeScreen.Callbacks() {
+            @Override public void onImportNsp() { pickFolder(REQ_IMPORT_DIR); }
+            @Override public void onUseExtractedFolder() { pickFolder(REQ_IMPORT_DIR_FOLDER); }
+            @Override public void onChangeFolder() { pickFolder(REQ_GAME_DIR); }
+            @Override public void onPlay() { play(); }
+        });
+        View homeView = home.build();
+
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER);
@@ -72,83 +83,11 @@ public class LetsGoLauncherActivity extends Activity {
         int pad = dp(24);
         root.setPadding(pad, pad, pad, pad);
 
-        TextView title = new TextView(this);
-        title.setText("Let's Go Recomp");
-        title.setTextSize(28);
-        title.setTextColor(Color.WHITE);
-        title.setGravity(Gravity.CENTER);
-        root.addView(title, lp(-1, -2));
+        root.addView(homeView, lp(-1, -2));
 
-        status = new TextView(this);
-        status.setTextSize(15);
-        status.setTextColor(Color.rgb(180, 190, 200));
-        status.setGravity(Gravity.CENTER);
-        status.setPadding(0, dp(12), 0, dp(24));
-        root.addView(status, lp(-1, -2));
-        refreshStatus();
-
-        Button play = new Button(this);
-        play.setText("Jogar");
-        play.setTextSize(18);
-        play.setOnClickListener(new android.view.View.OnClickListener() {
-            @Override public void onClick(android.view.View v) {
-                // Never boot from a partial import: the game FATALs on missing exefs/main.
-                LetsGoImportJob ij = LetsGoImportJob.current();
-                if (ij != null && !ij.finished) {
-                    android.widget.Toast.makeText(LetsGoLauncherActivity.this,
-                        "Aguarde a importação terminar antes de jogar.",
-                        android.widget.Toast.LENGTH_LONG).show();
-                    return;
-                }
-                // Never launch into a native crash: without complete game data
-                // the runtime FATALs (see main.c boot()). Tell the user instead.
-                if (!gameDataReady(LetsGoLauncherActivity.this)) {
-                    android.widget.Toast.makeText(LetsGoLauncherActivity.this,
-                        "O jogo ainda não foi importado por completo: toque em \"Importar jogo do NSP\" e aguarde chegar a 100%.",
-                        android.widget.Toast.LENGTH_LONG).show();
-                    return;
-                }
-                startActivity(new Intent(LetsGoLauncherActivity.this,
-                                         LetsGoActivity.class));
-            }
-        });
-        root.addView(play, lp(-1, -2));
-
-        Button pick = new Button(this);
-        pick.setText("Selecionar pasta do jogo");
-        pick.setOnClickListener(new android.view.View.OnClickListener() {
-            @Override public void onClick(android.view.View v) {
-                Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
-                startActivityForResult(i, REQ_GAME_DIR);
-            }
-        });
-        LinearLayout.LayoutParams plp = lp(-1, -2);
-        plp.topMargin = dp(12);
-        root.addView(pick, plp);
-
-        Button importBtn = new Button(this);
-        importBtn.setText("Importar jogo do NSP");
-        importBtn.setOnClickListener(new android.view.View.OnClickListener() {
-            @Override public void onClick(android.view.View v) {
-                Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
-                startActivityForResult(i, REQ_IMPORT_DIR);
-            }
-        });
-        LinearLayout.LayoutParams ilp = lp(-1, -2);
-        ilp.topMargin = dp(12);
-        root.addView(importBtn, ilp);
-
-        Button importFolderBtn = new Button(this);
-        importFolderBtn.setText("Importar NSP para pasta (sem .bin)");
-        importFolderBtn.setOnClickListener(new android.view.View.OnClickListener() {
-            @Override public void onClick(android.view.View v) {
-                Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
-                startActivityForResult(i, REQ_IMPORT_DIR_FOLDER);
-            }
-        });
-        LinearLayout.LayoutParams iflp = lp(-1, -2);
-        iflp.topMargin = dp(8);
-        root.addView(importFolderBtn, iflp);
+        // The old title/status/play buttons are replaced by the home screen above; what
+        // follows are the game settings and the driver panel (they move to their own
+        // panels in a later PR).
 
         Button log = new Button(this);
         log.setText("Ver log");
@@ -180,9 +119,10 @@ public class LetsGoLauncherActivity extends Activity {
                 GpuDrivers.Driver sel = GpuDrivers.selected(LetsGoLauncherActivity.this);
                 StringBuilder sb = new StringBuilder();
                 if (sel != null) {
-                    sb.append("Em uso: ").append(sel.name).append(" (").append(sel.driverVersion).append(")\n");
+                    sb.append("Em uso: driver do sistema")
+                      .append(sel.name).append(" (").append(sel.driverVersion).append(")");
                 } else {
-                    sb.append("Em uso: driver do sistema\n");
+                    sb.append("Em uso: driver do sistema");
                 }
                 java.util.List<GpuDrivers.Driver> all = GpuDrivers.list(LetsGoLauncherActivity.this);
                 if (all.isEmpty()) {
@@ -380,24 +320,44 @@ public class LetsGoLauncherActivity extends Activity {
         scroll.setFillViewport(true);
         scroll.addView(root);
         setContentView(scroll);
+        // The home screen starts in its default state; refreshState() decides what to show.
+        refreshState();
     }
 
-    private void refreshStatus() {
-        // If an import is running, the poller owns the status line.
+    /** Launch the game — never into a native crash (without complete game data the runtime FATALs). */
+    private void play() {
+        LetsGoImportJob ij = LetsGoImportJob.current();
+        if (ij != null && !ij.finished) {
+            android.widget.Toast.makeText(this,
+                "Aguarde a importação terminar antes de jogar.",
+                android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (!gameDataReady(this)) {
+            android.widget.Toast.makeText(this,
+                "O jogo ainda não foi importado por completo.",
+                android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
+        startActivity(new Intent(this, LetsGoActivity.class));
+    }
+
+    /** Open the folder picker (SAF). */
+    private void pickFolder(int req) {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+        startActivityForResult(i, req);
+    }
+
+    /** Show the state of the installation on the home screen. */
+    private void refreshState() {
+        if (home == null) return;
         LetsGoImportJob job = LetsGoImportJob.current();
-        if (job != null && !job.finished) { startImportPolling(); return; }
-        File gameLib = new File(getApplicationInfo().nativeLibraryDir, "liblasgame.so");
-        String dir = gameDir(this);
-        File base = dir != null ? new File(dir) : getFilesDir();
-        File dataRoot = new File(base, "extracted/romfs");
-        File dataRootAlt = new File(base, "romfs");
-        boolean romfsOk = dataRoot.exists() || dataRootAlt.exists();
-        if (gameLib.exists() && romfsOk) {
-            status.setText("Jogo pronto para iniciar.\nPasta: " + (dir != null ? dir : "(interna)"));
-        } else if (dir != null) {
-            status.setText("Pasta selecionada, mas romfs não encontrado nela.\n" + dir);
-        } else {
-            status.setText("Selecione a pasta do jogo (com extracted/romfs dentro).");
+        boolean importing = job != null && !job.finished;
+        String error = (!importing && job != null) ? job.error : null;
+        home.showState(importing, error, gameDataReady(this));
+        if (importing) {
+            int pct = job.total > 0 ? (int) (100.0 * job.done / job.total) : 0;
+            home.showProgress(pct, job.phase, job.currentName);
         }
     }
 
@@ -417,7 +377,7 @@ public class LetsGoLauncherActivity extends Activity {
                 getSharedPreferences(PREFS, MODE_PRIVATE).edit()
                     .putString(KEY_GAME_DIR, path).apply();
             }
-            refreshStatus();
+            refreshState();
         } else if ((req == REQ_IMPORT_DIR || req == REQ_IMPORT_DIR_FOLDER) && res == RESULT_OK
                 && data != null && data.getData() != null) {
             android.widget.Toast.makeText(this, "Pasta escolhida, iniciando...",
@@ -449,13 +409,12 @@ public class LetsGoLauncherActivity extends Activity {
         // Import into the game dir (or the app's private files if none picked yet).
         String dir = gameDir(this);
         File outDir = dir != null ? new File(dir) : getFilesDir();
-        status.setText("Iniciando importação para:\n" + outDir.getAbsolutePath());
         LetsGoImportJob job = LetsGoImportJob.start(this, uri, outDir, folder);
         if (job != null) startImportPolling();
-        else status.setText("Já há uma importação em andamento.");
+        refreshState();
     }
 
-    /** Poll the import job and show progress in the status line. */
+    /** Poll the import job and show the progress on the home screen. */
     private void startImportPolling() {
         if (importPoller == null) importPoller = new android.os.Handler();
         if (importPollTask != null) importPoller.removeCallbacks(importPollTask);
@@ -463,21 +422,11 @@ public class LetsGoLauncherActivity extends Activity {
             @Override public void run() {
                 LetsGoImportJob job = LetsGoImportJob.current();
                 if (job == null || job.finished) {
-                    if (job != null) {
-                        if (job.error != null) status.setText("Erro na importação:\n" + job.error);
-                        else if (job.cancelled) status.setText("Importação cancelada.");
-                        else status.setText("Importação concluída em " +
-                                String.format("%.0f", job.seconds) + "s.\n" + job.containerName);
-                    }
-                    refreshStatus();
+                    refreshState();
                     return;
                 }
-                String pct = job.total > 0
-                        ? String.format(" %.0f%%", 100.0 * job.done / job.total)
-                        : "";
-                String txt = "Importando [" + job.phase + "]" + pct + "\n" + job.currentName;
-                if (!job.keysOk) txt = "Procurando prod.keys e NSP...";
-                status.setText(txt);
+                int pct = job.total > 0 ? (int) (100.0 * job.done / job.total) : 0;
+                home.showProgress(pct, job.phase, job.currentName);
                 importPoller.postDelayed(this, 500);
             }
         };
