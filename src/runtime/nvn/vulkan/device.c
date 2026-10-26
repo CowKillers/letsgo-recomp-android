@@ -34,7 +34,6 @@ static VkDebugUtilsMessengerEXT messenger;
 // Every Vulkan entry point goes through g_vkd (vk_dispatch.h). At startup the table is filled from the
 // loader in use: the system loader normally, or a custom GPU driver (Turnip) via adrenotools when the
 // launcher selected one (LARECOMP_GPU_DRIVER=<dir>/<lib>.so, LARECOMP_NATIVE_LIB_DIR=<nativeLibraryDir>).
-VkDispatch g_vkd;
 static PFN_vkGetInstanceProcAddr g_gipa;  // the loader's vkGetInstanceProcAddr behind g_vkd
 
 #include <dlfcn.h>
@@ -102,7 +101,7 @@ static void load_one(const char *name, void **slot) {
 
 // The vk_* macros from vk_dispatch.h (vkCreateInstance -> g_vkd.vkCreateInstance) must NOT
 // expand inside the fill code below, or VKFN(vkCreateInstance) becomes &g_vkd.g_vkd.vkCreateInstance.
-// Undefine them here; the call sites (other files) still get the macros from vk_dispatch.h.
+// Undefine them only while defining and filling the table; restore them before any call sites.
 #undef vkCreateInstance
 #undef vkDestroyInstance
 #undef vkEnumerateInstanceExtensionProperties
@@ -275,6 +274,15 @@ static void load_one(const char *name, void **slot) {
 #undef vkWaitForFences
 
 #define VKFN(f) load_one(#f, (void **)&g_vkd.f)
+VkDispatch g_vkd;
+
+// C trampolines also serve consumers which load functions outside the dispatch table.
+VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vk_loader_instance_proc(VkInstance instance, const char *name) {
+    return g_gipa(instance, name);
+}
+VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vk_loader_device_proc(VkDevice device, const char *name) {
+    return g_vkd.vkGetDeviceProcAddr(device, name);
+}
 static void load_dispatch_global(void) {   // before the instance exists (instance = VK_NULL_HANDLE)
     VKFN(vkCreateInstance);
     VKFN(vkEnumerateInstanceExtensionProperties);
@@ -417,10 +425,27 @@ static void load_dispatch_device(void) {   // after vkCreateDevice (device comma
     VKFD(vkCmdExecuteCommands);
 #undef VKFD
 }
-#endif  // LETSGO_ADRENOTOOLS (pausado)
+#undef VKFN
+#include "vk_dispatch_defs.h"
+#endif  // LETSGO_ADRENOTOOLS
 
 // Accessor for surface recovery
 SDL_Window *vk_sdl_window(void) { return window; }
+
+// Use the selected loader for both initial creation and surface recovery.
+static bool create_surface(void) {
+#ifdef LETSGO_ADRENOTOOLS
+    extern ANativeWindow *letsgo_get_native_window(void);
+    ANativeWindow *nw = letsgo_get_native_window();
+    if (!nw) return SDL_SetError("Android native window is not available");
+    VkAndroidSurfaceCreateInfoKHR ci = {.sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR, .window = nw};
+    VkResult r = vkCreateAndroidSurfaceKHR(g_vk.inst, &ci, NULL, &g_vk.surface);
+    if (r != VK_SUCCESS) return SDL_SetError("vkCreateAndroidSurfaceKHR: %d", r);
+    return true;
+#else
+    return SDL_Vulkan_CreateSurface(window, g_vk.inst, NULL, &g_vk.surface);
+#endif
+}
 
 // ================================================================== instance / device
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(VkDebugUtilsMessageSeverityFlagBitsEXT sev, VkDebugUtilsMessageTypeFlagsEXT type,
@@ -500,6 +525,16 @@ static void pick_device(void) {
     LOG("[vk] active GPU: %s (vendor 0x%04x, device 0x%04x, driver v%u.%u.%u)\n",
         g_vk.props.deviceName, g_vk.props.vendorID, g_vk.props.deviceID,
         VK_VERSION_MAJOR(g_vk.props.driverVersion), VK_VERSION_MINOR(g_vk.props.driverVersion), VK_VERSION_PATCH(g_vk.props.driverVersion));
+#ifdef LETSGO_ADRENOTOOLS
+    // Driver properties are a pNext query, not a standalone Vulkan entry point.
+    PFN_vkGetPhysicalDeviceProperties2 props2 =
+        (PFN_vkGetPhysicalDeviceProperties2)g_gipa(g_vk.inst, "vkGetPhysicalDeviceProperties2");
+    if (!props2) FATAL("vkGetPhysicalDeviceProperties2 not found\n");
+    VkPhysicalDeviceDriverProperties driver = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES};
+    VkPhysicalDeviceProperties2 props = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, .pNext = &driver};
+    props2(g_vk.phys, &props);
+    LOG("[vk] active driver: %s (driverID=%u, %s)\n", driver.driverName, driver.driverID, driver.driverInfo);
+#endif
     uint32_t nq = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(g_vk.phys, &nq, NULL);
     VkQueueFamilyProperties *qp = calloc(nq, sizeof *qp);
@@ -628,10 +663,18 @@ static void create_device(void) {
     VkDeviceCreateInfo di = {.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO, .pNext = &f, .queueCreateInfoCount = 1,
                              .pQueueCreateInfos = &qi, .enabledExtensionCount = n_ext, .ppEnabledExtensionNames = ext};
     VK_CHECK(vkCreateDevice(g_vk.phys, &di, NULL, &g_vk.dev));
+#ifdef LETSGO_ADRENOTOOLS
+    load_dispatch_device();  // before the first device command or allocator call
+#endif
     vkGetDeviceQueue(g_vk.dev, g_vk.qfam, 0, &g_vk.queue);
 
     VmaAllocatorCreateInfo ai = {.physicalDevice = g_vk.phys, .device = g_vk.dev, .instance = g_vk.inst,
                                  .vulkanApiVersion = VK_API_VERSION_1_3};
+#ifdef LETSGO_ADRENOTOOLS
+    // The first two fields are the loader callbacks; avoid macro-expanded field names.
+    VmaVulkanFunctions functions = {vk_loader_instance_proc, vk_loader_device_proc};
+    ai.pVulkanFunctions = &functions;
+#endif
     VK_CHECK(vmaCreateAllocator(&ai, &g_vk.vma));
 
     VkSemaphoreTypeCreateInfo st = {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO,
@@ -842,7 +885,7 @@ static void recover_lost_surface(void) {
     extern SDL_Window *vk_sdl_window(void);
     SDL_Window *window = vk_sdl_window();
     if (window) {
-        if (!SDL_Vulkan_CreateSurface(window, g_vk.inst, NULL, &g_vk.surface)) {
+        if (!create_surface()) {
             LOG("[vk] surface recovery FAILED: %s (waiting for window)\n", SDL_GetError());
             g_vk.present_state = PRESENT_WAITING_FOR_WINDOW;
             return;
@@ -1440,30 +1483,12 @@ void ui_window_init(void) {
     create_instance();
 #ifdef LETSGO_ADRENOTOOLS
     load_dispatch_instance();
-    // Create the Android surface through our own loader (not SDL's): with a custom
-    // Turnip driver, SDL's vkGetInstanceProcAddr would resolve against the system
-    // driver and mismatch the Turnip-created instance.
-    // (SDL3 removed SDL_syswm.h; the ANativeWindow comes via JNI from SDLActivity.)
-    extern ANativeWindow *letsgo_get_native_window(void);
-    {
-        ANativeWindow *nw = letsgo_get_native_window();
-        if (!nw) FATAL("letsgo_get_native_window: no ANativeWindow (is the Activity created?)\n");
-        VkAndroidSurfaceCreateInfoKHR sci = {.sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR,
-                                             .window = nw};
-        VkResult sr = vkCreateAndroidSurfaceKHR(g_vk.inst, &sci, NULL, &g_vk.surface);
-        if (sr != VK_SUCCESS) FATAL("vkCreateAndroidSurfaceKHR: %d\n", sr);
-        LOG("[vk] Android surface created via custom loader\n");
-    }
-#else
-    if (!SDL_Vulkan_CreateSurface(window, g_vk.inst, NULL, &g_vk.surface)) FATAL("SDL_Vulkan_CreateSurface: %s\n", SDL_GetError());
 #endif
+    if (!create_surface()) FATAL("Vulkan surface creation: %s\n", SDL_GetError());
     // MISSÃO A v0065: inicializa máquina de estados
     g_vk.present_state = PRESENT_READY;
     pick_device();
     create_device();
-#ifdef LETSGO_ADRENOTOOLS
-    load_dispatch_device();
-#endif
     create_swapchain();
     vk_exec_init();
     vk_shaders_init();

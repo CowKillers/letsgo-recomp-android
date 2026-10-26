@@ -71,7 +71,12 @@ for f in $SRC/runtime/nvn/vulkan/*.cpp; do compile_cxx "${f#$SRC/}" & done
 for f in $SRC/runtime/ui/*.mm; do compile_cxx "${f#$SRC/}" & done
 for f in imgui.cpp imgui_draw.cpp imgui_tables.cpp imgui_widgets.cpp \
          backends/imgui_impl_sdl3.cpp backends/imgui_impl_vulkan.cpp; do
-    $CXX $CFLAGS -std=c++17 -c "$SRC/third_party/imgui/$f" \
+    extra=""
+    # ImGui must resolve Vulkan through the same loader as the renderer.
+    if [[ "$CFLAGS" == *-DLETSGO_ADRENOTOOLS* && "$f" == backends/imgui_impl_vulkan.cpp ]]; then
+        extra="-DIMGUI_IMPL_VULKAN_NO_PROTOTYPES"
+    fi
+    $CXX $CFLAGS $extra -std=c++17 -c "$SRC/third_party/imgui/$f" \
         -o "$OBJDIR/imgui_$(echo $f | sed 's|/|_|g').o" 2>>build-errors.log \
         || { echo "FAIL: imgui/$f"; touch $FAILFILE; } &
 done
