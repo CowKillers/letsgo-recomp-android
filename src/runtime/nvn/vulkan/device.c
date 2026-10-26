@@ -656,7 +656,8 @@ static void create_device(void) {
     b->robustBufferAccess = h->robustBufferAccess;  // guest shaders index cbufs freely: keep OOB reads harmless
     if (getenv("LARECOMP_NO_ROBUST")) b->robustBufferAccess = VK_FALSE;  // (research: what the bounds checks cost)
     b->shaderClipDistance = h->shaderClipDistance;
-    if (!h->shaderInt64) LOG("[vk] warning: no shaderInt64 (64-bit address math in shaders)\n");
+    g_vk.shader_int64 = h->shaderInt64;  // (exec.c: without it, the translator emits 64-bit integer math on 32-bit words)
+    if (!h->shaderInt64) LOG("[vk] no shaderInt64: shaders get 64-bit integer math (addresses, carries) as 32-bit pairs\n");
     float prio = 1.0f;
     VkDeviceQueueCreateInfo qi = {.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, .queueFamilyIndex = g_vk.qfam,
                                   .queueCount = 1, .pQueuePriorities = &prio};

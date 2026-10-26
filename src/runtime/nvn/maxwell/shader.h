@@ -85,6 +85,9 @@ typedef struct {
 #define GMAP_MAX 16
 extern uint64_t maxwell_gmem_base, maxwell_gmem_size;
 extern bool maxwell_gmem_map_all;  // gwin active: every LDG/STG goes through gfind() + gfast_
+// GLSL: no shaderInt64 on the device (Qualcomm's Adreno driver): emit 64-bit integer math (global memory addresses,
+// IADD32I / IADD3 carries, SHF) on 32-bit words, so the SPIR-V doesn't declare the Int64 capability.
+extern bool maxwell_glsl_no_int64;
 // Debug: when translating the shader whose code starts at maxwell_dbg_code, output register
 // maxwell_dbg_reg as captured after the instruction at maxwell_dbg_pc (greyscale, all targets).
 extern const uint8_t *maxwell_dbg_code;
