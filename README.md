@@ -98,6 +98,31 @@ cd src && make gen ARCH=aarch64
 
 Detalhes, pré-requisitos e armadilhas: **[BUILD.md](BUILD.md)**.
 
+## Mods / Mods multiples
+
+**Português.** Extraia os mods com um app como o 7-Zip e coloque cada pasta em
+`<pasta do jogo>/mods/<nome>/romfs/...`. Vários mods podem ficar ativos ao mesmo
+tempo (até 8). Quando dois mods fornecem o mesmo arquivo, o primeiro da lista
+vence: `mod = Traducao, Randomizer` dá prioridade a `Traducao`.
+
+No launcher Android, a prioridade segue a ordem em que as caixas são marcadas,
+não a ordem alfabética das caixas. A ajuda mostra a lista **Ordem ativa**, na mesma
+ordem gravada na linha `mod` de `larecomp.ini`. Desmarcar e remarcar um mod o move
+para o fim dessa lista. Só arquivos RomFS são substituídos; patches de código
+(`exefs`, `.ips`) não são aplicados.
+
+**Français.** Extrayez les mods avec une application comme 7-Zip et placez chaque
+dossier dans `<dossier du jeu>/mods/<nom>/romfs/...`. Plusieurs mods peuvent être
+actifs en même temps (jusqu'à 8). Si deux mods fournissent le même fichier, le
+premier de la liste l'emporte : `mod = Traduction, Randomizer` donne la priorité
+à `Traduction`.
+
+Dans le lanceur Android, la priorité suit l'ordre dans lequel les cases sont
+cochées, pas leur ordre alphabétique. L'aide affiche la liste **Ordre actif**, dans
+l'ordre exact enregistré sur la ligne `mod` de `larecomp.ini`. Décocher puis
+recocher un mod le déplace à la fin de cette liste. Seuls les fichiers RomFS sont
+remplacés ; les correctifs de code (`exefs`, `.ips`) ne sont pas appliqués.
+
 ## Créditos
 
 - [raulzrrs / letsgo-recomp](https://github.com/raulzrrs/letsgo-recomp) — recompilação estática original

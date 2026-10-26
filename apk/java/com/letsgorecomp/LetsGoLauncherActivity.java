@@ -283,6 +283,9 @@ public class LetsGoLauncherActivity extends Activity {
         String gd = gameDir(this);
         final java.util.List<String> modNames = listMods(new File(gd != null ? gd : getFilesDir().getAbsolutePath(), "mods"));
         final java.util.List<String> active = activeMods(readIniValue("mod"));
+        final boolean french = "fr".equals(getResources().getConfiguration().getLocales().get(0).getLanguage());
+        final TextView modsHelp = new TextView(this);
+        modsHelp.setText(modsHelpText(active, modNames.isEmpty(), french));
         for (final String name : modNames) {
             final CheckBox box = new CheckBox(this);
             box.setText(name);
@@ -296,15 +299,11 @@ public class LetsGoLauncherActivity extends Activity {
                     java.util.LinkedHashMap<String, String> kv = new java.util.LinkedHashMap<>();
                     kv.put("mod", android.text.TextUtils.join(", ", now));
                     updateIni(kv);
+                    modsHelp.setText(modsHelpText(now, false, french));
                 }
             });
             root.addView(box, lp(-1, -2));
         }
-        TextView modsHelp = new TextView(this);
-        modsHelp.setText(modNames.isEmpty()
-                ? "Nenhum mod. Extraia o arquivo do mod (.zip, .rar, .7z) com um app como o 7-Zip e coloque a pasta em mods/ "
-                  + "dentro da pasta do jogo: mods/<nome>/romfs/... Só arquivos romfs são trocados (exefs, .ips: não)."
-                : "Marcados primeiro vencem quando dois mods trocam o mesmo arquivo. Novos mods: extraia com o 7-Zip para mods/.");
         modsHelp.setTextSize(12);
         modsHelp.setTextColor(Color.rgb(140, 150, 160));
         root.addView(modsHelp, lp(-1, -2));
@@ -565,6 +564,23 @@ public class LetsGoLauncherActivity extends Activity {
             for (File f : subs)
                 if (f.isDirectory() && !f.getName().startsWith(".") && hasRomfs(f, depth - 1)) return true;
         return false;
+    }
+
+    /** Help displays exactly the same order as the serialized mod list, not the alphabetical checkbox order. */
+    static String modsHelpText(java.util.List<String> active, boolean noMods, boolean french) {
+        String order = active.isEmpty() ? (french ? "aucun" : "nenhum") : String.join(", ", active);
+        if (french) return (noMods ? "Aucun mod. " : "")
+                + "Extrayez les archives (.zip, .rar, .7z) avec 7-Zip dans mods/<nom>/romfs/ du dossier du jeu. "
+                + "Seuls les fichiers RomFS sont remplacés (pas exefs ni .ips). Plusieurs mods peuvent être actifs (jusqu'à 8). "
+                + "Si deux mods fournissent le même fichier, le premier de la liste l'emporte. "
+                + "La priorité suit l'ordre de cochage, pas l'ordre alphabétique des cases. Décocher puis recocher déplace à la fin. "
+                + "Ordre actif (enregistré dans larecomp.ini) : " + order;
+        return (noMods ? "Nenhum mod. " : "")
+                + "Extraia os arquivos (.zip, .rar, .7z) com o 7-Zip em mods/<nome>/romfs/ dentro da pasta do jogo. "
+                + "Só arquivos RomFS são trocados (exefs, .ips: não). Vários mods podem ficar ativos (até 8). "
+                + "Quando dois mods fornecem o mesmo arquivo, o primeiro da lista vence. "
+                + "A prioridade segue a ordem de marcação, não a ordem alfabética das caixas. Desmarcar e remarcar move para o fim. "
+                + "Ordem ativa (gravada em larecomp.ini): " + order;
     }
 
     /** larecomp.ini's mod line ("A, B") as a list, in order, without blanks or repeats. */
