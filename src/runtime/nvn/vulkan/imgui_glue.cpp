@@ -11,6 +11,13 @@ extern "C" {
 // in-place reboot while the menu's context lives on): the backend keeps its data in the current context.
 extern "C" bool vk_imgui_backend_init(void) {
     if (ImGui::GetIO().BackendRendererUserData) return true;
+#ifdef LETSGO_ADRENOTOOLS
+    if (!ImGui_ImplVulkan_LoadFunctions(VK_API_VERSION_1_3,
+            [](const char *name, void *) { return vk_loader_instance_proc(g_vk.inst, name); }, NULL)) {
+        LOG("[vk] ImGui Vulkan function loading failed\n");
+        return false;
+    }
+#endif
     ImGui_ImplVulkan_InitInfo ii = {};
     ii.ApiVersion = VK_API_VERSION_1_3;
     ii.Instance = g_vk.inst;
