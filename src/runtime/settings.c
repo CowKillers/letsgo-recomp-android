@@ -136,10 +136,10 @@ static void profiles_upgrade(void) {
 
 static void parse_line(const char *line) {
     char key[64];
-    char val[128];
-    if (sscanf(line, " %63[^= ] = %127[^\n]", key, val) < 1) return;
+    char val[512];
+    if (sscanf(line, " %63[^= ] = %511[^\n]", key, val) < 1) return;
     if (!strcmp(key, "game_lang") || !strcmp(key, "mod")) {  // (may be empty)
-        if (sscanf(line, " %63[^= ] = %127[^\n]", key, val) != 2) val[0] = 0;
+        if (sscanf(line, " %63[^= ] = %511[^\n]", key, val) != 2) val[0] = 0;
         if (key[0] == 'g') strlcpy(g_settings.game_lang, val, sizeof g_settings.game_lang);
         else strlcpy(g_settings.mod, val, sizeof g_settings.mod);
         return;
@@ -186,7 +186,7 @@ void settings_load(void) {
 #endif
     FILE *f = fopen(SETTINGS_FILE, "r");
     if (!f) return;
-    char line[256];
+    char line[640];
     while (fgets(line, sizeof line, f)) {
         // (a file edited by hand may have CRLF: "resolution = dynamic\r" did not match and fell back silently)
         for (size_t n = strlen(line); n && (line[n - 1] == '\n' || line[n - 1] == '\r' || line[n - 1] == ' '); n--) line[n - 1] = 0;
@@ -197,7 +197,7 @@ void settings_load(void) {
             const char *eq = strstr(p, " = "), *next = eq ? strstr(eq + 3, " = ") : NULL, *k = next;
             while (k && k > eq + 3 && ((k[-1] >= 'a' && k[-1] <= 'z') || k[-1] == '_')) k--;
             if (!next || k == next || k <= eq + 3) { parse_line(p); break; }
-            char part[256];
+            char part[640];
             snprintf(part, sizeof part, "%.*s", (int)(k - p), p);
             parse_line(part);
             p = k;

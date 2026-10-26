@@ -87,7 +87,7 @@ static uint32_t romfs_hash(uint32_t parent, const char *name, uint32_t len) {
 
 static int path_cmp(const void *a, const void *b) { return strcmp(*(char *const *)a, *(char *const *)b); }
 
-typedef struct { char rel[1024]; char host[1200]; uint64_t size; } NewFile;
+typedef struct { char rel[1024]; char host[1200]; uint64_t size; int mod; } NewFile;
 
 static void walk_new(const char *root, const char *rel, char **known, int nknown, NewFile **out, int *n, int *cap) {
     char dirp[1200];
@@ -134,18 +134,35 @@ static int64_t dir_lookup(const uint8_t *dm, uint64_t dsz, const char *path) {
     return cur;
 }
 
+static int newfile_cmp(const void *a, const void *b) {  // by path, then by mod (the first active mod first)
+    const NewFile *x = a, *y = b;
+    int c = strcmp(x->rel, y->rel);
+    return c ? c : x->mod - y->mod;
+}
+
 static void add_new_files(int fd, const uint64_t *h, const uint8_t *dmeta, uint64_t dsz, uint64_t fsz) {
-    if (!mod_romfs_dir()) return;  // a mod's new files (runtime/mods.h)
-    char root[1100];
-    snprintf(root, sizeof root, "%s", mod_romfs_dir());
+    const char *roots[MODS_ACTIVE_MAX];  // the active mods' new files (runtime/mods.h)
+    int nroots = mods_active(roots, MODS_ACTIVE_MAX);
+    if (!nroots) return;
     char **known = malloc(sizeof *known * rom_nfiles);
     for (int i = 0; i < rom_nfiles; i++) known[i] = rom_files[i].path;
     qsort(known, rom_nfiles, sizeof *known, path_cmp);
     NewFile *nf = NULL;
     int n = 0, cap = 0;
-    walk_new(root, "", known, rom_nfiles, &nf, &n, &cap);
+    for (int m = 0; m < nroots; m++) {
+        int from = n;
+        walk_new(roots[m], "", known, rom_nfiles, &nf, &n, &cap);
+        for (int i = from; i < n; i++) nf[i].mod = m;
+    }
     free(known);
-    if (!n) return;
+    // a file new to the game that several mods add: the first active mod's (the same rule as replaced files); sorted
+    // by path, so the extended table does not depend on the order the disk lists the folders in
+    if (n) qsort(nf, n, sizeof *nf, newfile_cmp);
+    int kept = 0;
+    for (int i = 0; i < n; i++)
+        if (!kept || strcmp(nf[kept - 1].rel, nf[i].rel)) nf[kept++] = nf[i];
+    n = kept;
+    if (!n) { free(nf); return; }
     rom_files = realloc(rom_files, sizeof(RomFile) * (rom_nfiles + n));
     uint64_t hoff = h[5], hsz = h[6];
     uint8_t *dcopy = malloc(dsz), *hcopy = malloc(hsz), *head = malloc(0x50);

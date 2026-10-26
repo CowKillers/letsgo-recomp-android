@@ -35,7 +35,7 @@ typedef struct {
     int profile_world_aspect;   // PASP_* of the WORLD profile
     int profile_battle_aspect;  // PASP_* of the BATTLE/MENUS profile
     char game_lang[8];   // the game's language code ("en-US", "es"...: runtime/mods.c game_language)
-    char mod[128];       // active mod / fan translation (mods/<name>/), empty = none (runtime/mods.h)
+    char mod[512];       // active mods / fan translations (mods/<name>/, "a, b": several), empty = none (runtime/mods.h)
 } Settings;
 
 extern Settings g_settings;

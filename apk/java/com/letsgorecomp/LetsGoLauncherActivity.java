@@ -273,6 +273,42 @@ public class LetsGoLauncherActivity extends Activity {
         });
         root.addView(langSpinner, lp(-1, -2));
 
+        // Mods: one box per folder under <game folder>/mods/ that has a romfs/ (runtime/mods.c finds it up to 4
+        // levels down, so an archive extracted as is works). The checked ones go to larecomp.ini's mod line in the
+        // order they were checked ("mod = A, B"): the first listed wins a file several replace (runtime/mods.h).
+        TextView modsLabel = new TextView(this);
+        modsLabel.setText("Mods:");
+        modsLabel.setTextColor(Color.rgb(200, 210, 220));
+        root.addView(modsLabel, lp(-1, -2));
+        String gd = gameDir(this);
+        final java.util.List<String> modNames = listMods(new File(gd != null ? gd : getFilesDir().getAbsolutePath(), "mods"));
+        final java.util.List<String> active = activeMods(readIniValue("mod"));
+        for (final String name : modNames) {
+            final CheckBox box = new CheckBox(this);
+            box.setText(name);
+            box.setTextColor(Color.rgb(200, 210, 220));
+            box.setChecked(active.contains(name));
+            box.setOnCheckedChangeListener(new android.widget.CompoundButton.OnCheckedChangeListener() {
+                @Override public void onCheckedChanged(android.widget.CompoundButton b, boolean c) {
+                    java.util.List<String> now = activeMods(readIniValue("mod"));
+                    now.remove(name);
+                    if (c) now.add(name);
+                    java.util.LinkedHashMap<String, String> kv = new java.util.LinkedHashMap<>();
+                    kv.put("mod", android.text.TextUtils.join(", ", now));
+                    updateIni(kv);
+                }
+            });
+            root.addView(box, lp(-1, -2));
+        }
+        TextView modsHelp = new TextView(this);
+        modsHelp.setText(modNames.isEmpty()
+                ? "Nenhum mod. Extraia o arquivo do mod (.zip, .rar, .7z) com um app como o 7-Zip e coloque a pasta em mods/ "
+                  + "dentro da pasta do jogo: mods/<nome>/romfs/... Só arquivos romfs são trocados (exefs, .ips: não)."
+                : "Marcados primeiro vencem quando dois mods trocam o mesmo arquivo. Novos mods: extraia com o 7-Zip para mods/.");
+        modsHelp.setTextSize(12);
+        modsHelp.setTextColor(Color.rgb(140, 150, 160));
+        root.addView(modsHelp, lp(-1, -2));
+
         final CheckBox wild = new CheckBox(this);
         wild.setText("Batalhas selvagens (experimental)");
         wild.setTextColor(Color.rgb(200, 210, 220));
@@ -508,6 +544,38 @@ public class LetsGoLauncherActivity extends Activity {
             for (String l : mergeIni(lines, kv)) w.write(l + "\n");
             w.close();
         } catch (Exception ignored) {}
+    }
+
+    /** Folders under dir with a romfs/ folder up to 4 levels down (the runtime's rule, runtime/mods.c), sorted. */
+    static java.util.List<String> listMods(File dir) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        File[] subs = dir.listFiles();
+        if (subs == null) return out;
+        for (File f : subs)
+            if (f.isDirectory() && !f.getName().startsWith(".") && hasRomfs(f, 4)) out.add(f.getName());
+        java.util.Collections.sort(out, String.CASE_INSENSITIVE_ORDER);
+        return out;
+    }
+
+    private static boolean hasRomfs(File dir, int depth) {
+        if (new File(dir, "romfs").isDirectory()) return true;
+        if (depth <= 0) return false;
+        File[] subs = dir.listFiles();
+        if (subs != null)
+            for (File f : subs)
+                if (f.isDirectory() && !f.getName().startsWith(".") && hasRomfs(f, depth - 1)) return true;
+        return false;
+    }
+
+    /** larecomp.ini's mod line ("A, B") as a list, in order, without blanks or repeats. */
+    static java.util.List<String> activeMods(String line) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        if (line == null) return out;
+        for (String m : line.split(",")) {
+            m = m.trim();
+            if (!m.isEmpty() && !out.contains(m)) out.add(m);
+        }
+        return out;
     }
 
     /** lines with kv's keys set ("key = value", in place; the missing ones appended), every other line unchanged. */

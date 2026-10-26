@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/stat.h>
 #include <unistd.h>  // rmdir (bionic does not pull it in transitively)
 
@@ -27,27 +28,36 @@ static bool is_dir(const char *p) {
 // made for both games (atmosphere/titles/<Pikachu>/ and <Eevee>/) are searched under the set-up game's title id first.
 #define EEVEE_TITLE "0100187003A36000"
 #define PIKACHU_TITLE "010003F003A34000"
-static bool find_romfs(const char *dir, int depth, char *out, size_t cap) {
+// strict: never inside a folder named after the other version's title id. A mod made for both versions
+// ("Pokemon Lets Go Eevee/0100187003A36000/romfs" next to "Pokemon Lets Go Pikachu/010003F003A34000/romfs") gave the
+// first folder the disk listed, so the other version's files could be served.
+static bool find_romfs_in(const char *dir, int depth, bool strict, char *out, size_t cap) {
     char p[1024];
     snprintf(p, sizeof p, "%s/romfs", dir);  // (RomFs / romfs: Windows names ignore case)
     if (is_dir(p)) { snprintf(out, cap, "%s", p); return true; }
     if (depth <= 0) return false;
     const char *name = game_name("extracted/exefs");
     bool pikachu = name && !strcmp(name, "Pikachu");
-    snprintf(p, sizeof p, "%s/%s", dir, pikachu ? PIKACHU_TITLE : EEVEE_TITLE);
-    if (is_dir(p) && find_romfs(p, depth - 1, out, cap)) return true;
-    snprintf(p, sizeof p, "%s/%s", dir, pikachu ? EEVEE_TITLE : PIKACHU_TITLE);
-    if (is_dir(p) && find_romfs(p, depth - 1, out, cap)) return true;
+    const char *mine = pikachu ? PIKACHU_TITLE : EEVEE_TITLE, *other = pikachu ? EEVEE_TITLE : PIKACHU_TITLE;
+    snprintf(p, sizeof p, "%s/%s", dir, mine);
+    if (is_dir(p) && find_romfs_in(p, depth - 1, strict, out, cap)) return true;
+    snprintf(p, sizeof p, "%s/%s", dir, other);
+    if (!strict && is_dir(p) && find_romfs_in(p, depth - 1, strict, out, cap)) return true;
     DIR *d = opendir(dir);
     if (!d) return false;
     bool found = false;
     for (struct dirent *e; !found && (e = readdir(d));) {
-        if (e->d_name[0] == '.') continue;
+        if (e->d_name[0] == '.' || (strict && !strcasecmp(e->d_name, other))) continue;
         snprintf(p, sizeof p, "%s/%s", dir, e->d_name);
-        if (is_dir(p)) found = find_romfs(p, depth - 1, out, cap);
+        if (is_dir(p)) found = find_romfs_in(p, depth - 1, strict, out, cap);
     }
     closedir(d);
     return found;
+}
+
+// The romfs/ folder of a mod: this version's if the mod has one, else any.
+static bool find_romfs(const char *dir, int depth, char *out, size_t cap) {
+    return find_romfs_in(dir, depth, true, out, cap) || find_romfs_in(dir, depth, false, out, cap);
 }
 
 int mods_list(char names[][128], int max) {
@@ -64,29 +74,72 @@ int mods_list(char names[][128], int max) {
     return n;
 }
 
+// The romfs/ folder of mods/<name>/, or NULL. (cached: asked for every file of the image at boot)
+#define ROMFS_CACHE 16
 static const char *romfs_of(const char *name) {
-    static char cached_name[128], dir[1024];
-    static bool ok;
+    static struct { char name[128], dir[1024]; bool ok; } cache[ROMFS_CACHE];
+    static int ncache;
     if (!name || !*name) return NULL;
-    if (strcmp(name, cached_name)) {
-        snprintf(cached_name, sizeof cached_name, "%s", name);
-        char p[1024];
-        snprintf(p, sizeof p, "mods/%s", name);
-        ok = find_romfs(p, 4, dir, sizeof dir);
-        if (ok) LOG("[mods] %s: %s\n", name, dir);
-        else LOG("[mods] %s: no romfs/ folder found under mods/%s\n", name, name);
-    }
-    return ok ? dir : NULL;
+    for (int i = 0; i < ncache; i++)
+        if (!strcmp(cache[i].name, name)) return cache[i].ok ? cache[i].dir : NULL;
+    int slot = ncache < ROMFS_CACHE ? ncache++ : ROMFS_CACHE - 1;
+    snprintf(cache[slot].name, sizeof cache[slot].name, "%s", name);
+    char p[1024];
+    snprintf(p, sizeof p, "mods/%s", name);
+    cache[slot].ok = find_romfs(p, 4, cache[slot].dir, sizeof cache[slot].dir);
+    if (cache[slot].ok) LOG("[mods] %s: %s\n", name, cache[slot].dir);
+    else LOG("[mods] %s: no romfs/ folder found under mods/%s\n", name, name);
+    return cache[slot].ok ? cache[slot].dir : NULL;
 }
 
-const char *mod_romfs_dir(void) { return romfs_of(g_settings.mod); }
+// g_settings.mod: one mod, or several separated by commas ("mod = Translation, Randomizer"). The first one listed
+// wins a file several of them replace: the order is the player's, fixed (not the folder order of the disk).
+static char g_active_list[sizeof g_settings.mod];
+static const char *g_active[MODS_ACTIVE_MAX];
+static int g_nactive;
+
+int mods_active(const char *dirs[], int max) {
+    if (strcmp(g_active_list, g_settings.mod)) {
+        snprintf(g_active_list, sizeof g_active_list, "%s", g_settings.mod);
+        g_nactive = 0;
+        char list[sizeof g_settings.mod];
+        snprintf(list, sizeof list, "%s", g_settings.mod);
+        const char *names[MODS_ACTIVE_MAX];
+        int nnames = 0;
+        for (char *save = NULL, *t = strtok_r(list, ",", &save); t; t = strtok_r(NULL, ",", &save)) {
+            while (*t == ' ' || *t == '\t') t++;
+            for (size_t n = strlen(t); n && (t[n - 1] == ' ' || t[n - 1] == '\t'); n--) t[n - 1] = 0;
+            bool dup = false;
+            for (int i = 0; i < nnames; i++) dup |= !strcmp(names[i], t);
+            if (!*t || dup) continue;
+            if (nnames == MODS_ACTIVE_MAX) { LOG("[mods] more than %d mods active: %s and after ignored\n", MODS_ACTIVE_MAX, t); break; }
+            names[nnames++] = t;
+            const char *dir = romfs_of(t);
+            if (dir) g_active[g_nactive++] = dir;
+            char exefs[1100];  // code patches (IPS / pchtxt) are made for one build of the game: not applied here
+            snprintf(exefs, sizeof exefs, "%s/../exefs", dir ? dir : "");
+            if (dir && is_dir(exefs)) LOG("[mods] %s: exefs/ ignored (only romfs/ files are replaced)\n", t);
+        }
+    }
+    int n = g_nactive < max ? g_nactive : max;
+    for (int i = 0; i < n; i++) dirs[i] = g_active[i];
+    return n;
+}
+
+const char *mod_romfs_dir(void) {
+    const char *d[1];
+    return mods_active(d, 1) ? d[0] : NULL;
+}
 
 bool mod_romfs_override(const char *path, char *out, size_t cap) {
-    const char *root = mod_romfs_dir();
-    if (!root) return false;
+    const char *dirs[MODS_ACTIVE_MAX];
+    int n = mods_active(dirs, MODS_ACTIVE_MAX);
     struct stat sb;
-    snprintf(out, cap, "%s/%s", root, path);
-    return !stat(out, &sb) && S_ISREG(sb.st_mode);
+    for (int i = 0; i < n; i++) {
+        snprintf(out, cap, "%s/%s", dirs[i], path);
+        if (!stat(out, &sb) && S_ISREG(sb.st_mode)) return true;
+    }
+    return false;
 }
 
 // bin/message/<folder> -> language code
@@ -110,8 +163,14 @@ const char *mod_language(const char *name) {
 }
 
 const char *game_language(void) {
-    const char *m = mod_language(g_settings.mod);
-    if (m) return m;
+    char list[sizeof g_settings.mod];  // the first active mod with a language of its own
+    snprintf(list, sizeof list, "%s", g_settings.mod);
+    for (char *save = NULL, *t = strtok_r(list, ",", &save); t; t = strtok_r(NULL, ",", &save)) {
+        while (*t == ' ' || *t == '\t') t++;
+        for (size_t n = strlen(t); n && (t[n - 1] == ' ' || t[n - 1] == '\t'); n--) t[n - 1] = 0;
+        const char *m = mod_language(t);
+        if (m) return m;
+    }
     // Fan translations REPLACE the English files (keeping the folder name "English").
     // The game must request en-US to load the translated PT-BR text.
     return g_settings.game_lang[0] ? g_settings.game_lang : "en-US";
