@@ -52,7 +52,7 @@ Isso lê o `main` do **seu** NSP e gera `src/generated-aarch64/` (~972 arquivos 
 ### Etapa 1 — Runtime (só compila, sem linkar ainda)
 
 ```bash
-./scripts/build-runtime.sh
+./build-runtime.sh
 ```
 
 Espere **`SMOKE_OK`** no final. Objetos em `build/obj-android`.
@@ -61,7 +61,7 @@ Se falhar, veja `build-errors.log`.
 ### Etapa 2 — Importador de NSP
 
 ```bash
-./scripts/build-importer.sh
+./build-importer.sh
 ```
 
 Gera `build/liblgimport.so` (o importador que roda dentro do app no aparelho).
@@ -69,7 +69,7 @@ Gera `build/liblgimport.so` (o importador que roda dentro do app no aparelho).
 ### Etapa 3 — Biblioteca do jogo
 
 ```bash
-./scripts/build-gamelib.sh
+./build-gamelib.sh
 ```
 
 Gera `build/game/liblasgame.so` (o jogo recompilado) e `GAMELIB_ID.txt`.
@@ -77,7 +77,7 @@ Gera `build/game/liblasgame.so` (o jogo recompilado) e `GAMELIB_ID.txt`.
 ### Etapa 4 — Linkar o runtime
 
 ```bash
-./scripts/link-runtime.sh
+./link-runtime.sh
 ```
 
 Gera `build/apk-lib/liblasrecomp.so`. Espere **`RUNTIME_LINK_OK`**.
@@ -87,7 +87,7 @@ Nota: o link inclui `-ladrenotools` (DT_NEEDED) para o suporte a driver Turnip.
 ### Etapa 5 — Montar e assinar o APK (sem Gradle)
 
 ```bash
-./scripts/build-apk.sh
+./build-apk.sh
 ```
 
 Cadeia: `javac` → `d8` → `aapt2` → `zipalign` → `apksigner`.
@@ -109,14 +109,39 @@ Espere **`APK_OK`**, confira o timestamp novo e o `versionCode`.
 - **Verifique antes de anunciar**: `SMOKE_OK` + `RUNTIME_LINK_OK` + `APK_OK`,
   timestamp novo, versionCode correto, assinatura válida com o seu keystore.
 
-## Primeira execução no aparelho
+## Como preparar o jogo para o app aceitar (passo a passo)
 
-1. Instale o APK.
-2. Abra o app e use o importador: aponte para o **seu** NSP e suas `prod.keys`.
-   O importador extrai `exefs/` e `romfs.bin` para o storage externo.
-3. O save fica em `save/save_0/savedata.bin` (storage externo — **sobrevive à
-   desinstalação do APK**).
-4. No launcher, escolha a resolução: 0.5x=480p, 0.75x=540p, 1x=720p, 1.5x=1080p.
+O aplicativo **não** vem com o jogo e **não** aceita um NSP solto. Ele precisa de
+duas coisas, em duas etapas separadas:
+
+### Etapa A — Antes do build: gerar o código do jogo (na sua máquina Linux)
+
+1. Tenha em mãos o **seu** NSP do Let's Go Eevee 1.0.0 e as **suas** `prod.keys` /
+   `title.keys` (extraídas do seu próprio console).
+2. Rode a geração (Etapa 0 acima): `cd src && make gen ARCH=aarch64`.
+   Isso lê o `main` do seu NSP e cria `src/generated-aarch64/` — o código do jogo
+   recompilado para arm64. **Esse código gerado nunca vai para o repositório** (é
+   derivado do binário do jogo); cada pessoa gera o seu a partir do próprio dump.
+3. Siga as Etapas 1–5 e instale o APK no aparelho.
+
+### Etapa B — No aparelho: importar o jogo pelo app
+
+1. Abra o app. O launcher mostra a tela de importação.
+2. Aponte o importador para **o seu NSP** e para as **suas `prod.keys`**.
+   O importador (SAF, sem root) lê o NSP e extrai, no storage externo do aparelho:
+   - `extracted/exefs/` — executável e dados do jogo
+   - `extracted/romfs.bin` — arquivos do jogo
+   - `extracted/.import_ok` — marca de importação concluída
+3. Se a importação for interrompida, ela é **retomável** — abra o app de novo e
+   continue de onde parou.
+4. Com o `.import_ok` presente, o app aceita o jogo e o boot começa. O save fica em
+   `save/save_0/savedata.bin` (storage externo — **sobrevive à desinstalação do APK**).
+5. No launcher, escolha a resolução: 0.5x=480p, 0.75x=540p, 1x=720p, 1.5x=1080p.
+
+**Resumo:** o NSP próprio serve duas vezes — uma na sua máquina (para gerar o código
+na Etapa A) e uma no aparelho (para o importador extrair os dados na Etapa B).
+Sem o dump próprio, nenhuma das duas etapas funciona — e é por isso que o
+repositório não inclui nenhum arquivo do jogo.
 
 ## Problemas? Veja ISSUES.md
 

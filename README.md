@@ -11,10 +11,12 @@ Testado no Galaxy S23 (Snapdragon 8 Gen 2, Adreno 740, Android 16).
 
 | Pasta/arquivo | Conteúdo |
 |---|---|
-| `runtime/` | Runtime de recompilação (NVN→Vulkan, HLE, SDL3) — derivado do letsgo-recomp, licença MIT |
+| `src/` | Código-fonte completo: `runtime/` (NVN→Vulkan, HLE, SDL3), `tools/` (geração: `gen.py`, `lifter.py` e mais 22 scripts), `Makefile`, `third_party/` (imgui, smaa, vma, fontes), `docs/` (docs upstream) |
 | `apk/` | App Android: launcher, importador in-app, overlay de controles, manifest |
 | `importer/` | Importador de NSP no aparelho (lê o dump do usuário e extrai `exefs`/`romfs`) |
-| `scripts/` | Scripts de build (`build-runtime.sh`, `link-runtime.sh`, `build-apk.sh`, etc.) |
+| scripts na raiz | Scripts de build (`build-runtime.sh`, `link-runtime.sh`, `build-apk.sh`, etc.) |
+| `docs/` | Documentação do projeto: auditorias, relatórios de builds, HOWTO original |
+| `screenshots/` | Capturas do jogo rodando no S23 (estado atual) |
 | `BUILD.md` | **Tutorial completo de build**: o que você precisa, passo a passo |
 | `ISSUES.md` | **Problemas conhecidos**: o que funciona, o que não funciona, e o que já foi investigado |
 | `RELATORIO-ATUALIZADO.md` | Relatório detalhado do estado do projeto (v0090) |
@@ -65,12 +67,12 @@ capturas do jogo rodando no aparelho, apenas para demonstrar o estado do port.)
 cd src && make gen ARCH=aarch64
 
 # 2. Compile o runtime, o importador e linke
-./scripts/build-runtime.sh    # espera SMOKE_OK
-./scripts/build-importer.sh
-./scripts/link-runtime.sh     # espera RUNTIME_LINK_OK
+./build-runtime.sh    # espera SMOKE_OK
+./build-importer.sh
+./link-runtime.sh     # espera RUNTIME_LINK_OK
 
 # 3. Monte e assine o APK
-./scripts/build-apk.sh        # APK sai na raiz
+./build-apk.sh        # APK sai na raiz
 ```
 
 Detalhes, pré-requisitos e armadilhas: **[BUILD.md](BUILD.md)**.

@@ -1,0 +1,114 @@
+RELATÓRIO DE CORREÇÕES — Let's Go Recomp Android v1136
+=====================================================
+Data: 19/10/2026 ~11:36 BRT
+APK: LetsGoRecomp-v1136.apk
+SHA256: 633778d994017b8da99f4e92af3beacdc1608ac593d38f810ce2d6aabac70b57
+versionCode: 1792420613
+Base: v1052 (SHA256 129d948db7967052b0d00bf7855b3ee6d573eed88a621949fe41e06688eb26cf)
+
+PROBLEMA 1: Imagem do jogo girada 90° e deformada
+-----------------------------------------------
+CAUSA:
+- create_swapchain() forçava imageExtent para 1280x720, ignorando
+  currentExtent da superfície.
+- vk_frame_begin() comparava tamanho da janela com swapchain a cada
+  frame, causando recriações repetidas.
+- present.vert não compensava rotações de 90/180/270° do preTransform.
+
+EVIDÊNCIA:
+- Screenshots mostravam conteúdo 3D girado 90° enquanto UI 2D estava normal.
+- Log mostrava swapchain 1920x1080 mas jogo renderizando 720x1280.
+
+SOLUÇÃO:
+- device.c create_swapchain(): removido extent fixo. Respeita currentExtent
+  quando definido; quando variável, usa tamanho da janela limitado aos
+  intervalos suportados (min/maxImageExtent).
+- device.c: adicionados logs de currentExtent, currentTransform,
+  supportedTransforms, imageExtent e preTransform escolhidos.
+- vk.h: adicionado campo sc_rotation ao VkG.
+- device.c create_swapchain(): mapeia currentTransform para rotação
+  (0/90/180/270°) em g_vk.sc_rotation.
+- shaders.c present.vert: adicionada compensação de rotação via
+  pc.a.y (0=0°, 1=90°, 2=180°, 3=270°), aplicada aos UVs.
+- device.c vk_frame_begin(): recriação só quando tamanho da janela
+  realmente muda (last_w/last_h), com contador e log do motivo.
+
+VALIDAÇÃO:
+- Build compila sem erros (SMOKE_OK).
+- Validação visual em aparelho: PENDENTE.
+
+PROBLEMA 2: Textos ausentes nas caixas de diálogo
+------------------------------------------------
+CAUSA:
+- nvnTextureFlushTexels() estava vazio em runtime/nvn/objects.c.
+  O jogo atualiza o atlas de glifos na CPU e chama FlushTexels para
+  notificar a GPU, mas a notificação era ignorada. A GPU exibia
+  textura desatualizada (vazia).
+
+EVIDÊNCIA:
+- Log confirmava fonte carregada (/system/fonts/Roboto-Regular.ttf).
+- Idioma correto (en-US). Caixas de diálogo vazias mesmo assim.
+- nvnTextureFlushTexels = { (void)c; } — nenhuma operação.
+
+SOLUÇÃO:
+- objects.c nvnTextureFlushTexels(): implementado de verdade.
+  Obtém NvnTexture via HOST(), calcula tamanho via tegra_total_size(),
+  chama backend_pool_written(addr, size) para marcar a região como
+  suja. Integra ao mecanismo existente de dirty-tracking (não é
+  invalidação global).
+- objects.c nvnTextureInvalidateTexels(): mesmo tratamento.
+
+VALIDAÇÃO:
+- Build compila sem erros.
+- Validação visual (letras visíveis em diálogos): PENDENTE — requer
+  teste em aparelho.
+
+PROBLEMA 3: Fonte empacotada não incluída no APK
+------------------------------------------------
+CAUSA:
+- build-apk.sh não incluía apk/assets no aapt2 link.
+- LetsGoActivity.java silenciava exceção na cópia da fonte.
+
+SOLUÇÃO:
+- build-apk.sh: adicionado -A apk/assets ao aapt2 link.
+- Verificado: assets/fonts/DejaVuSans.ttf presente no APK final.
+- LetsGoActivity.java: cópia com diagnóstico (Log.i/e/w), validação
+  de tamanho (>100KB), limpeza de arquivo parcial, fechamento seguro.
+
+PROBLEMA 4: Build não falhava em erros de compilação paralela
+--------------------------------------------------------------
+CAUSA:
+- build-runtime.sh usava variável `fail` modificada em subshells
+  (jobs com &). Variável de subshell não afeta o pai.
+
+SOLUÇÃO:
+- Substituído por arquivo marcador $OBJDIR/.build_failed.
+- Jobs tocam o arquivo em caso de erro; verificação final usa
+  [ -f $FAILFILE ] e sai com exit 1.
+
+AUDITORIA shaderInt64
+---------------------
+- Aviso "[vk] warning: no shaderInt64" é informativo.
+- Shaders emitidos (GLSL: present.vert/frag, post.*) não usam
+  operações de 64-bit. Nenhuma evidência de relação com textos.
+- Nenhuma ação necessária.
+
+LIMITAÇÕES E PENDÊNCIAS
+-----------------------
+1. Validação visual em aparelho PENDENTE para: orientação correta,
+   proporção 16:9 sem esticar, textos visíveis em diálogos.
+2. A causa dos textos (FlushTexels) é hipótese forte com base em
+   código, mas só será comprovada com letras visíveis no aparelho.
+3. Se textos persistirem ausentes, próximos passos: instrumentar
+   atlas (dimensões, formato, upload), verificar pl:u GetSharedFont*,
+   checar alpha/blending/scissor nos draws de texto.
+
+ARQUIVOS ALTERADOS
+------------------
+- src/runtime/nvn/vulkan/device.c (swapchain, logs, rotação, recriação)
+- src/runtime/nvn/vulkan/vk.h (campo sc_rotation)
+- src/runtime/nvn/vulkan/shaders.c (present.vert com rotação)
+- src/runtime/nvn/objects.c (FlushTexels/InvalidateTexels)
+- apk/java/com/letsgorecomp/LetsGoActivity.java (diagnóstico fonte)
+- build-apk.sh (incluir -A apk/assets)
+- build-runtime.sh (falha via arquivo, não variável)

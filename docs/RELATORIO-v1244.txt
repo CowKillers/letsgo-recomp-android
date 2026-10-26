@@ -1,0 +1,81 @@
+RELATORIO v1244 — CORRECAO DE REGRESSAO DE DESEMPENHO E TELA CHEIA
+Data: 19/10/2026 ~12:44 BRT
+APK: LetsGoRecomp-v1244.apk
+SHA256: f40b7b8df68dcc9569056c01686b3db6a6e80d739d9caa5006570fa8be5346c6
+versionCode: 1792424263
+
+================================================================
+1. CAUSA DA REGRESSAO (comprovada pelo log)
+================================================================
+
+O log mostrava:
+  ANTES: [post] 1280x720 smaa -> 1280x720
+  DEPOIS (v1136/v1216): [post] 1920x1080 smaa -> 1920x1080
+
+Causa: na v1216, o swapchain foi forcado para 1920x1080 para impor
+16:9 via imageExtent. Isso aumentou a resolucao interna do jogo e
+dos passes SMAA de 1280x720 para 1920x1080 = 2,25x mais pixels
+nos passes de pos-processamento (smaa_edge, smaa_weight, smaa_blend).
+
+O 16:9 deve ser tratado no viewport/enquadramento (letterbox),
+separadamente das dimensoes da superficie/swapchain.
+
+================================================================
+2. ALTERACOES (com arquivo e linha)
+================================================================
+
+a) runtime/nvn/vulkan/device.c — create_swapchain()
+   REMOVIDO o forcamento de 16:9 via imageExtent.
+   O swapchain agora usa o currentExtent da superficie diretamente
+   (2340x1080 no S23), compativel com as capacidades reais.
+   O 16:9 e tratado pelo output_scale() via viewport (vx,vy,vw,vh)
+   com letterbox, sem deformacao.
+
+b) runtime/platform/android.c — nativeSetup()
+   ADICIONADO: setenv("LARECOMP_SCALE", "0.6667", 1)
+   Forca renderizacao interna em 720p (0.6667 = 720/1080).
+   Os passes SMAA rodam em 1280x720, com upscale no passe final
+   (present) para a superficie. Independente do tamanho do swapchain.
+
+c) apk/java/com/letsgorecomp/LetsGoActivity.java — applyFullscreen()
+   SUBSTITUIDO o metodo antigo (FLAG_FULLSCREEN + SYSTEM_UI_FLAG,
+   obsoleto e sobrescrito pelo SDLActivity) por:
+   - API 30+: Window.setDecorFitsSystemWindows(false) +
+     WindowInsetsController.hide(Type.systemBars()) +
+     BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+   - API 28-29: fallback com flags legadas
+   Aplicado apos super.onCreate() e em onWindowFocusChanged().
+
+d) apk/res/values/styles.xml (NOVO) + AndroidManifest.xml
+   Tema Fullscreen (windowFullscreen=true) aplicado a LetsGoActivity,
+   igual ao projeto Wonder (referencia).
+
+================================================================
+3. MEDICOES
+================================================================
+
+ANTES (v1216, log do dispositivo):
+  [post] 1920x1080 smaa -> 1920x1080
+  FPS: ~20 em gameplay (relatado)
+
+DEPOIS (v1244, esperado):
+  [post] 1280x720 smaa -> 2340x1080
+  FPS: a confirmar no dispositivo (meta: 30 FPS)
+
+Separacao de resolucoes:
+  - Interna do jogo: 1280x720 (LARECOMP_SCALE=0.6667)
+  - Passes SMAA: 1280x720
+  - Saida (upscale no present): 2340x1080
+  - Swapchain: 2340x1080 (superficie)
+
+================================================================
+4. VALIDACAO PENDENTE (no dispositivo)
+================================================================
+
+[ ] Barras de status/navegacao ocultas durante o jogo
+[ ] Funciona apos minimizar e retomar
+[ ] Orientacao correta, imagem sem distorcao (16:9 com barras laterais)
+[ ] Textos e controles preservados
+[ ] [post] mostra 1280x720 smaa -> 2340x1080 no log
+[ ] Sem recriacao continua do swapchain no log
+[ ] 30 FPS na mesma cena que dava 20 FPS

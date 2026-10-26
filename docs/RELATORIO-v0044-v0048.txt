@@ -1,0 +1,80 @@
+# RELATÓRIO — Let's Go Recomp Android v0044 → v0048
+
+Data: 20/10/2026
+Dispositivo-alvo: Galaxy S23 (Snapdragon 8 Gen 2, Adreno 740)
+
+## v0044-adreno (versionCode 1792490418)
+**Adrenotools/Turnip completo e funcional** (pedido dela: "Instale o adrenotools por completo")
+- `src/runtime/nvn/vulkan/vk_dispatch.h`: dispatch via `g_vkd` (127 funções)
+- `src/runtime/nvn/vulkan/device.c`: `load_gipa()` abre Turnip via `adrenotools_open_libvulkan` quando `LARECOMP_GPU_DRIVER` setada
+- Surface criada manualmente via `vkCreateAndroidSurfaceKHR` + `ANativeWindow` por JNI (`android.c: letsgo_get_native_window`)
+- `link-runtime.sh`: linka `-ladrenotools` (DT_NEEDED verificado)
+- Java: `GpuDrivers.java` (importa/seleciona/deleta .zip Turnip), seção "Driver GPU (Turnip)" no launcher
+- `turnip-8g2.zip` em `apk/assets/` (auto-instalado e pré-selecionado na 1ª execução)
+- Libs: `libadrenotools.so`, `libhook_impl.so`, `libfile_redirect_hook.so`, `libgsl_alloc_hook.so`, `libmain_hook.so`
+
+## v0045-export (versionCode 1792491698)
+**Botão Exportar no LogActivity** (pedido dela: "Não consigo salvar o log")
+- `apk/java/com/letsgorecomp/LogActivity.java`: botão "Exportar" salva em `Downloads/letsgo-log.txt`
+
+## v0046-fontaudit (versionCode 1792495622)
+**Diagnóstico tex-audit-v2** para o problema de textos
+- `src/runtime/nvn/vulkan/textures.c`: rastreia mudanças no atlas 2048x1024, loga `[tex-audit-v2]` quando `nonzero` muda
+- Descoberta: atlas tem 3480 bytes iniciais, game escreve mais ao longo do tempo
+
+## v0047-fontwatch (versionCode 1792496755)
+**Watchpoint via mprotect** para detectar escrita no atlas de fontes
+- `src/runtime/nvn/vulkan/textures.c`: handler SIGSEGV + `mprotect(PROT_READ)` no atlas
+- Quando o jogo escreve, loga `[font-watch] WRITE DETECTED at <addr> (pc=<pc>)`
+- **Resultado no aparelho**: DISPAROU! `[font-watch] WRITE DETECTED at 0x729c3aa92a (pc=0x7cfa29d19c)`
+- **Conclusão**: A rasterização do Beluga FUNCIONA. O problema está depois (upload/draw ou atlas errado).
+
+## v0048-res-fontwatch (versionCode 1792499287)
+**Duas mudanças:**
+
+### 1. Resolução escalável estilo emulador (pedido dela)
+- `src/runtime/platform/android.c`: REMOVIDO o `setenv("LARECOMP_SCALE", "0.6667", 1)` forçado
+- `apk/java/com/letsgorecomp/LetsGoLauncherActivity.java`: Spinner "Resolução interna" com opções:
+  - 0.5x (540p) - Performance
+  - 0.75x (810p) - Equilibrado
+  - 1x (720p) - Padrão
+  - 1.5x (1080p) - Qualidade
+- `apk/java/com/letsgorecomp/LetsGoActivity.java`: lê a preferência e seta `LARECOMP_SCALE` via `Os.setenv` antes do `loadLibrary`
+- Detalhes: `docs/RESOLUTION_SCALING.md`
+
+### 2. Watchpoint estendido para texturas pequenas
+- `src/runtime/nvn/vulkan/textures.c`: segundo watchpoint para o atlas 64x64 em `0x7285e32000`
+- Hipótese: o diálogo pode usar as 51 texturas pequenas (todas zeradas), não a 2048x1024
+
+### 3. Log melhorado para falha do Turnip (preparado, não testado)
+- `src/runtime/nvn/vulkan/device.c`: inclui `dlerror()` no log de falha
+- **Descoberta**: o `turnip-v26-3-0-r6-oneui` que ela importou FALHA no `adrenotools_open_libvulkan`
+- Ela sempre usou o driver do sistema (explica "não sinto diferença")
+
+## Arquivos de documentação criados
+- `docs/PERF_AUDIT.md`: auditoria de performance (SMAA, dynamic res, shader cache, threads)
+- `docs/TEXT_RENDER_AUDIT.md`: auditoria do render de texto (ETAPA 0/3/4/5 da ORDEM MESTRE)
+- `docs/BELUGA_GLYPH_TRACE.md`: relatório da instrumentação do Beluga (status: CAUSA AINDA NÃO ISOLADA)
+- `docs/RESOLUTION_SCALING.md`: investigação da resolução escalável
+
+## Como compilar
+```bash
+cd ~/workspace/letsgo-port
+export PATH=/usr/bin:$PATH
+# 1. Gerar código (se src/generated-aarch64/ não existir):
+#    make gen ARCH=aarch64
+# 2. Build:
+bash build-gamelib.sh
+bash build-runtime.sh
+bash link-runtime.sh
+bash build-importer.sh
+rm -rf build/apk
+bash build-apk.sh
+```
+- Assinar SEMPRE com `~/workspace/dr2cw-android/apk-test/debug.keystore` (alias `androiddebugkey`, senha `android`)
+- Incrementar `versionCode` em `apk/AndroidManifest.xml` a cada build (usar `date +%s`)
+
+## Pendências
+1. **Textos**: Rasterização confirmada funcionando. Falta identificar por que o diálogo fica vazio (atlas errado? UVs? draw?). Aguardando log da v0048 com watchpoint nas texturas pequenas.
+2. **Turnip**: Diagnosticar por que o `v26-3-0-r6-oneui` falha no load. Testar o `turnip-8g2` embutido.
+3. **Performance**: Com resolução 0.5x, áreas externas devem sair dos 19/21 fps.

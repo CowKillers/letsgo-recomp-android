@@ -1,0 +1,58 @@
+RELATORIO v1250 — FULLSCREEN VIA SDL + WINDOWINSETSCONTROLLER
+Data: 19/10/2026 ~13:20 BRT
+APK: LetsGoRecomp-v1250.apk
+SHA256: fac14b3fd14217818ca7a7a1d72697576f6203ee3cec9d5295e6d6153da9d016
+versionCode: 1792425034
+
+================================================================
+CAUSA IDENTIFICADA
+================================================================
+
+O launcher ficava em tela cheia, mas ao abrir a LetsGoActivity as
+barras de status e navegacao reapareciam.
+
+Causa raiz: g_settings.fullscreen tem default FALSE (settings.c:20).
+Por isso device.c:848 nunca executava:
+  if (g_settings.fullscreen && ...) SDL_SetWindowFullscreen(window, true);
+
+Sem a chamada SDL_SetWindowFullscreen, o SDLActivity nunca recebia
+COMMAND_CHANGE_WINDOW_STYLE para esconder as barras via
+WindowInsetsController. A applyFullscreen() da LetsGoActivity agia
+sozinha e o SDL/sistema revertiam.
+
+================================================================
+ALTERACOES
+================================================================
+
+1. src/runtime/nvn/vulkan/device.c (ui_window_init)
+   No Android (__ANDROID__), chama SDL_SetWindowFullscreen(window, true)
+   incondicionalmente, com log do retorno e SDL_GetError():
+     [vk] SDL_SetWindowFullscreen(true) -> ok / FAIL: <erro>
+   Isso dispara COMMAND_CHANGE_WINDOW_STYLE no SDLActivity, que esconde
+   as system bars via WindowInsetsController (API 30+) ou flags (API 28-29).
+
+2. apk/java/com/letsgorecomp/LetsGoActivity.java
+   - applyFullscreen(): usa WindowInsetsController (API 30+) com
+     setDecorFitsSystemWindows(false) + hide(systemBars()) +
+     BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE; fallback para API 28-29.
+   - Logging diagnostico em applyFullscreen() e onWindowFocusChanged():
+     [fs] applyFullscreen: activity=... hasFocus=... decor=WxH
+     [fs] WindowInsetsController: bars hidden, transient-by-swipe
+     [fs] insets: statusBars=<top> navBars=<bottom>
+     [fs] onWindowFocusChanged: hasFocus=<bool>
+   - Reaplica em onCreate (apos super.onCreate), onResume e
+     onWindowFocusChanged(true).
+
+3. Preservado: orientacao corrigida (v1136), 720p interno
+   (LARECOMP_SCALE=0.6667, v1244), fontes, tema Fullscreen.
+
+================================================================
+VALIDACAO PENDENTE (no dispositivo)
+================================================================
+
+[ ] Abrir o jogo pelo launcher: barras ocultas na gameplay
+[ ] Log mostra [vk] SDL_SetWindowFullscreen(true) -> ok
+[ ] Log mostra [fs] WindowInsetsController: bars hidden
+[ ] Minimizar e retomar: barras continuam ocultas
+[ ] Gesto de swipe: barras aparecem temporariamente e somem
+[ ] Screenshot da GAMEPLAY (nao do launcher) com barras ocultas
