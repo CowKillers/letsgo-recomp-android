@@ -1,0 +1,34 @@
+# Arquivos do jogo e chaves: NUNCA versionar
+*.xci
+*.nsp
+*.nca
+*.nso
+*.keys
+prod.keys
+title.keys
+extracted/
+generated/
+generated-*/
+
+# Build
+build/
+
+# Repositórios de referência (clonados localmente)
+reference/
+tools/bin/
+.venv/
+logs/
+
+# Gerados pelo runtime ao rodar (saves, caches de shader, configurações locais)
+cache/
+save/
+larecomp.ini
+*.log
+mods/
+
+# Logs que o driver da NVIDIA cria na pasta de trabalho
+NVIDIA Corporation/
+# Fontes do sistema do Switch, tiradas do seu console (fonts/README.md)
+fonts/*.bfttf
+fonts/*.ttf
+
