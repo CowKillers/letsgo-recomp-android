@@ -24,6 +24,7 @@
 
 uint64_t maxwell_gmem_base, maxwell_gmem_size;
 bool maxwell_gmem_map_all;  // gwin active: every LDG/STG goes through gfind() + gfast_
+bool maxwell_glsl_no_int64;  // GLSL: the device has no shaderInt64 - 64-bit integer math as pairs of 32-bit words
 const uint8_t *maxwell_dbg_code;
 uint32_t maxwell_dbg_pc;
 int maxwell_dbg_reg;
@@ -51,6 +52,19 @@ static void sp(Str *s, const char *fmt, ...) {
     vsnprintf(s->buf + s->len, n + 1, fmt, ap2);
     va_end(ap2);
     s->len += n;
+}
+
+// Replace every `from` with `to` in s->buf[start..] (no-int64 rewrite of the code just emitted for one instruction).
+static void str_subst(Str *s, size_t start, const char *from, const char *to) {
+    size_t fl = strlen(from), tl = strlen(to);
+    Str o = {0};
+    const char *p = s->buf + start, *q;
+    while ((q = strstr(p, from)) != NULL) { sp(&o, "%.*s%s", (int)(q - p), p, to); p = q + fl; }
+    sp(&o, "%s", p);
+    s->len = start;
+    sp(s, "%s", o.buf);
+    free(o.buf);
+    (void)tl;
 }
 
 typedef struct {
@@ -1161,20 +1175,36 @@ static void emit_insn(Ctx *c, uint64_t w, uint32_t pc) {
     } else if (OPM(0x1c00000000000000ull, 0xfe00000000000000ull)) {  // IADD32I (CC bit 52, X bit 53)
         bool wcc = bits(w, 52, 1), x = bits(w, 53, 1);
         if (wcc || x) c->uses_cc = true;
+        if (c->glsl && maxwell_glsl_no_int64) {  // (same carry, 32-bit: uaddCarry)
+            sp(&c->body, "    { uint k0 = 0u, k1 = 0u; uint sum = uaddCarry(%s%s, 0x%08xu, k0);%s%s\n", bits(w, 56, 1) ? "-" : "", R(a),
+               (uint32_t)bits(w, 20, 32), x ? " sum = uaddCarry(sum, cc, k1);" : "", wcc ? " cc = (k0 + k1) & 1u;" : "");
+            if (d != RZ) { c->reg_used[d] = 1; sp(&c->body, "      r%d = sum;\n", d); }
+            sp(&c->body, "    }\n");
+        } else {
         sp(&c->body, "    { ulong sum = ulong(%s%s) + ulong(0x%08xu)%s;%s\n", bits(w, 56, 1) ? "-" : "", R(a), (uint32_t)bits(w, 20, 32),
            x ? " + ulong(cc)" : "", wcc ? " cc = uint(sum >> 32) & 1u;" : "");
         if (d != RZ) { c->reg_used[d] = 1; sp(&c->body, "      r%d = uint(sum);\n", d); }
         sp(&c->body, "    }\n");
+        }
     } else if (OPM(0x5cc0000000000000ull, 0xfff0000000000000ull) || OPM(0x4cc0000000000000ull, 0xfff0000000000000ull) ||
                OPM(0x38c0000000000000ull, 0xfef0000000000000ull)) {  // IADD3
         bool wcc3 = bits(w, 47, 1), x3 = bits(w, 48, 1);
         if (wcc3 || x3) {  // carry in/out (64-bit address math)
             c->uses_cc = true;
+            if (c->glsl && maxwell_glsl_no_int64) {  // (sum >> 32 = k0 + k1 + k2)
+                sp(&c->body, "    { uint k0 = 0u, k1 = 0u, k2 = 0u; uint sum = uaddCarry(%s%s, %s%s, k0); sum = uaddCarry(sum, %s%s, k1);%s\n",
+                   bits(w, 51, 1) ? "-" : "", R(a), bits(w, 50, 1) ? "-" : "", B(false), bits(w, 49, 1) ? "-" : "", R((int)bits(w, 39, 8)),
+                   x3 ? " sum = uaddCarry(sum, cc, k2);" : "");
+                if (wcc3) sp(&c->body, "      cc = (k0 + k1 + k2) & 1u;\n");
+                if (d != RZ) { c->reg_used[d] = 1; sp(&c->body, "      r%d = sum;\n", d); }
+                sp(&c->body, "    }\n");
+            } else {
             sp(&c->body, "    { ulong sum = ulong(%s%s) + ulong(%s%s) + ulong(%s%s)%s;\n", bits(w, 51, 1) ? "-" : "", R(a),
                bits(w, 50, 1) ? "-" : "", B(false), bits(w, 49, 1) ? "-" : "", R((int)bits(w, 39, 8)), x3 ? " + ulong(cc)" : "");
             if (wcc3) sp(&c->body, "      cc = uint(sum >> 32) & 1u;\n");
             if (d != RZ) { c->reg_used[d] = 1; sp(&c->body, "      r%d = uint(sum);\n", d); }
             sp(&c->body, "    }\n");
+            }
         } else {
             sprintf(t, "(%s%s + %s%s + %s%s)", bits(w, 51, 1) ? "-" : "", R(a), bits(w, 50, 1) ? "-" : "", B(false),
                     bits(w, 49, 1) ? "-" : "", R((int)bits(w, 39, 8)));
@@ -1436,6 +1466,17 @@ static void emit_insn(Ctx *c, uint64_t w, uint32_t pc) {
         const char *hi = R((int)bits(w, 39, 8));
         int width = bits(w, 38, 1) ? 64 : 32;
         bool s64 = bits(w, 37, 2) == 3, wrap = bits(w, 50, 1);
+        if (c->glsl && maxwell_glsl_no_int64) {  // v = hi:lo as two words; every shift below is by 0..31 (GLSL: >= 32 undefined)
+            sp(&c->body, wrap ? "    { uint s = %s & %du; uint vh = %s, vl = %s;\n" : "    { uint s = min(%s, %du); uint vh = %s, vl = %s;\n",
+               sh, wrap ? width - 1 : width, hi, R(a));
+            if (right)  // low word of v >> s (s64: arithmetic)
+                sprintf(t, "s == 0u ? vl : s < 32u ? ((vl >> s) | (vh << (32u - s))) : s < 64u ? %s : %s",
+                        s64 ? "uint(int(vh) >> (s - 32u))" : "(vh >> (s - 32u))", s64 ? "uint(int(vh) >> 31)" : "0u");
+            else  // high word of v << s
+                sprintf(t, "s == 0u ? vh : s < 32u ? ((vh << s) | (vl >> (32u - s))) : s < 64u ? (vl << (s - 32u)) : 0u");
+            if (d != RZ) { c->reg_used[d] = 1; sp(&c->body, "      r%d = %s;\n", d, t); }
+            sp(&c->body, "    }\n");
+        } else {
         sp(&c->body, wrap ? "    { uint s = %s & %du; ulong v = (ulong(%s) << 32) | ulong(%s);\n"
                           : "    { uint s = min(%s, %du); ulong v = (ulong(%s) << 32) | ulong(%s);\n",
            sh, wrap ? width - 1 : width, hi, R(a));
@@ -1446,16 +1487,30 @@ static void emit_insn(Ctx *c, uint64_t w, uint32_t pc) {
         else sprintf(t, "uint((v << s) >> 32)");
         if (d != RZ) { c->reg_used[d] = 1; sp(&c->body, "      r%d = %s;\n", d, t); }
         sp(&c->body, "    }\n");
+        }
     } else if (OPM(0xeed0000000000000ull, 0xfff8000000000000ull) || OPM(0xeed8000000000000ull, 0xfff8000000000000ull)) {  // LDG / STG
         bool store = bits(w, 51, 1);
         bool wide = bits(w, 45, 1);
         int size = (int)bits(w, 48, 3);
         int64_t off = sbits(w, 20, 24);
         c->info->uses_gmem = true;
+        size_t ga_start = c->body.len;  // (no-int64: the address lines below are rewritten on 32-bit words at the end)
         char addr[256];
         if (a == RZ) sprintf(addr, "ulong(%lld)", (long long)off);
         else if (wide) sprintf(addr, "((ulong(%s) << 32 | ulong(%s)) + ulong(%lld))", R(a + 1), R(a), (long long)off);
         else sprintf(addr, "(ulong(%s) + ulong(%lld))", R(a), (long long)off);
+        if (c->glsl && maxwell_glsl_no_int64) {
+            // ga = address - base as a word pair (gl, gh), ok = ga < size; uint(ga) = gl, uint(ga >> 2) = gh:gl >> 2
+            // (exact: the 64-bit expressions below are rewritten to these at the end of the instruction)
+            uint64_t o = (uint64_t)off, b = maxwell_gmem_base, z = maxwell_gmem_size;
+            if (a == RZ) sp(&c->body, "    { uint gl = 0x%08xu, gh = 0x%08xu, gk = 0u;\n", (uint32_t)o, (uint32_t)(o >> 32));
+            else
+                sp(&c->body, "    { uint gk = 0u; uint gl = uaddCarry(%s, 0x%08xu, gk); uint gh = %s + 0x%08xu + gk;\n", R(a), (uint32_t)o,
+                   wide ? R(a + 1) : "0u", (uint32_t)(o >> 32));
+            sp(&c->body, "      gl = usubBorrow(gl, 0x%08xu, gk); gh = gh - 0x%08xu - gk;\n", (uint32_t)b, (uint32_t)(b >> 32));
+            sp(&c->body, "      bool ok = gh < 0x%08xu || (gh == 0x%08xu && gl < 0x%08xu); uint gw = (gh << 30) | (gl >> 2);\n",
+               (uint32_t)(z >> 32), (uint32_t)(z >> 32), (uint32_t)z);
+        } else
         sp(&c->body, "    { ulong ga = %s - 0x%llxul; bool ok = ga < 0x%llxul;\n", addr,
            (unsigned long long)maxwell_gmem_base, (unsigned long long)maxwell_gmem_size);
         static const char *const ld_small[] = {"uint(gmem[ga])", "uint(int(char(gmem[ga])))",
@@ -1548,6 +1603,12 @@ static void emit_insn(Ctx *c, uint64_t w, uint32_t pc) {
                     sp(&c->body, "      if (ok) *(device uint *)(gmem + ga + %du) = %s;\n", k * 4, R(d == RZ ? RZ : d + k));
         }
         sp(&c->body, "    }\n");
+        if (c->glsl && maxwell_glsl_no_int64) {  // the 64-bit uses of ga, on the word pair
+            str_subst(&c->body, ga_start, "uint(ga >> 2)", "gw");
+            str_subst(&c->body, ga_start, "uint(ga & 3ul)", "(gl & 3u)");
+            str_subst(&c->body, ga_start, "uint(ga & 2ul)", "(gl & 2u)");
+            str_subst(&c->body, ga_start, "uint(ga)", "gl");
+        }
     } else if (emit_half(c, w)) {
     } else if (OPM(0x50f8000000000000ull, 0xfff8000000000000ull)) {  // FSWZADD
         // per quad lane (laneid & 3), 2 bits of the swizzle pick: a+b, b-a, a-b, b
