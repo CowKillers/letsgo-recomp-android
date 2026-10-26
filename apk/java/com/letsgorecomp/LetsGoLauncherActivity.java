@@ -54,6 +54,7 @@ public class LetsGoLauncherActivity extends Activity {
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+        Txt.init(this);
 
         // Request full storage access (needed for direct fopen() of game files)
         if (android.os.Build.VERSION.SDK_INT >= 30) {
@@ -91,7 +92,7 @@ public class LetsGoLauncherActivity extends Activity {
         // panels in a later PR).
 
         Button log = new Button(this);
-        log.setText("Ver log");
+        log.setText(Txt.t("ver_log", "Ver log"));
         log.setOnClickListener(new android.view.View.OnClickListener() {
             @Override public void onClick(android.view.View v) {
                 startActivity(new Intent(LetsGoLauncherActivity.this,
@@ -104,7 +105,7 @@ public class LetsGoLauncherActivity extends Activity {
 
         // ---- GPU driver (Turnip via adrenotools, like the Wonder port) ----
         android.widget.TextView drvTitle = new android.widget.TextView(this);
-        drvTitle.setText("Driver GPU (Turnip)");
+        drvTitle.setText(Txt.t("gpu", "Driver GPU (Turnip)"));
         drvTitle.setTextSize(16);
         drvTitle.setTextColor(Color.rgb(255, 255, 255));
         drvTitle.setPadding(0, dp(16), 0, dp(4));
@@ -120,16 +121,16 @@ public class LetsGoLauncherActivity extends Activity {
                 GpuDrivers.Driver sel = GpuDrivers.selected(LetsGoLauncherActivity.this);
                 StringBuilder sb = new StringBuilder();
                 if (sel != null) {
-                    sb.append("Em uso: driver do sistema")
+                    sb.append(Txt.t("in_use", "Em uso: driver do sistema"))
                       .append(sel.name).append(" (").append(sel.driverVersion).append(")");
                 } else {
-                    sb.append("Em uso: driver do sistema");
+                    sb.append(Txt.t("in_use", "Em uso: driver do sistema"));
                 }
                 java.util.List<GpuDrivers.Driver> all = GpuDrivers.list(LetsGoLauncherActivity.this);
                 if (all.isEmpty()) {
-                    sb.append("Nenhum driver Turnip instalado.");
+                    sb.append(Txt.t("drivers_none", "Nenhum driver Turnip instalado."));
                 } else {
-                    sb.append("Instalados: ");
+                    sb.append(Txt.t("installed", "Instalados: "));
                     for (int i = 0; i < all.size(); i++) {
                         if (i > 0) sb.append(", ");
                         sb.append(all.get(i).name);
@@ -145,7 +146,7 @@ public class LetsGoLauncherActivity extends Activity {
         refreshDrivers.run();
 
         Button importDrv = new Button(this);
-        importDrv.setText("Importar driver Turnip (.zip)");
+        importDrv.setText(Txt.t("import_driver", "Importar driver Turnip (.zip)"));
         importDrv.setOnClickListener(new android.view.View.OnClickListener() {
             @Override public void onClick(android.view.View v) {
                 Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
@@ -159,13 +160,13 @@ public class LetsGoLauncherActivity extends Activity {
         root.addView(importDrv, idlp);
 
         Button useSystem = new Button(this);
-        useSystem.setText("Usar driver do sistema");
+        useSystem.setText(Txt.t("use_system", "Usar driver do sistema"));
         useSystem.setOnClickListener(new android.view.View.OnClickListener() {
             @Override public void onClick(android.view.View v) {
                 GpuDrivers.select(LetsGoLauncherActivity.this, null);
                 refreshDrivers.run();
                 android.widget.Toast.makeText(LetsGoLauncherActivity.this,
-                    "Driver do sistema selecionado.", android.widget.Toast.LENGTH_SHORT).show();
+                    Txt.t("driver_sys", "Driver do sistema selecionado."), android.widget.Toast.LENGTH_SHORT).show();
             }
         });
         root.addView(useSystem, lp(-1, -2));
@@ -185,37 +186,37 @@ public class LetsGoLauncherActivity extends Activity {
                 GpuDrivers.select(LetsGoLauncherActivity.this, next);
                 refreshDrivers.run();
                 android.widget.Toast.makeText(LetsGoLauncherActivity.this,
-                    "Driver selecionado: " + next.name, android.widget.Toast.LENGTH_SHORT).show();
+                    Txt.t("driver_set", "Driver selecionado: ") + next.name, android.widget.Toast.LENGTH_SHORT).show();
             }
         });
 
         // ---- Game settings (written to larecomp.ini in the game folder) ----
         TextView cfgTitle = new TextView(this);
-        cfgTitle.setText("Configurações");
+        cfgTitle.setText(Txt.t("cfg", "Configurações"));
         cfgTitle.setTextSize(18);
         cfgTitle.setTextColor(Color.WHITE);
         cfgTitle.setPadding(0, dp(20), 0, dp(8));
         root.addView(cfgTitle, lp(-1, -2));
 
         final CheckBox fps60 = new CheckBox(this);
-        fps60.setText("60 fps (experimental)");
+        fps60.setText(Txt.t("fps60", "60 fps (experimental)"));
         fps60.setTextColor(Color.rgb(200, 210, 220));
         root.addView(fps60, lp(-1, -2));
 
         final CheckBox smaa = new CheckBox(this);
-        smaa.setText("Suavizar serrilhado (SMAA)");
+        smaa.setText(Txt.t("smaa", "Suavizar serrilhado (SMAA)"));
         smaa.setTextColor(Color.rgb(200, 210, 220));
         smaa.setChecked(true);
         root.addView(smaa, lp(-1, -2));
 
         // Resolution scale selector (emulator-style)
         TextView resLabel = new TextView(this);
-        resLabel.setText("Resolução interna:");
+        resLabel.setText(Txt.t("res", "Resolução interna:"));
         resLabel.setTextColor(Color.rgb(200, 210, 220));
         root.addView(resLabel, lp(-1, -2));
 
         final android.widget.Spinner resSpinner = new android.widget.Spinner(this);
-        final String[] resNames = {"0.5x (480p) - Performance", "0.75x (540p) - Equilibrado", "1x (720p) - Padrão", "2x (1080p) - Qualidade"};
+        final String[] resNames = {Txt.t("res_05", "0.5x (480p) - Performance"), Txt.t("res_075", "0.75x (540p) - Equilibrado"), Txt.t("res_1x", "1x (720p) - Padrão"), Txt.t("res_2x", "2x (1080p) - Qualidade")};
         final String[] resValues = {"0.4444", "0.5", "0.6667", "1.0"};
         android.widget.ArrayAdapter<String> resAdapter = new android.widget.ArrayAdapter<>(this,
                 android.R.layout.simple_spinner_item, resNames);
@@ -239,12 +240,12 @@ public class LetsGoLauncherActivity extends Activity {
         root.addView(resSpinner, lp(-1, -2));
 
         final CheckBox wild = new CheckBox(this);
-        wild.setText("Batalhas selvagens (experimental)");
+        wild.setText(Txt.t("wild", "Batalhas selvagens (experimental)"));
         wild.setTextColor(Color.rgb(200, 210, 220));
         root.addView(wild, lp(-1, -2));
 
         final CheckBox touch = new CheckBox(this);
-        touch.setText("Controles touch na tela");
+        touch.setText(Txt.t("touch", "Controles touch na tela"));
         touch.setTextColor(Color.rgb(200, 210, 220));
         touch.setChecked(getSharedPreferences("letsgo", MODE_PRIVATE).getBoolean("touch", true));
         root.addView(touch, lp(-1, -2));
@@ -274,7 +275,7 @@ public class LetsGoLauncherActivity extends Activity {
         wild.setOnClickListener(saveIni);
 
         TextView hint = new TextView(this);
-        hint.setText("Se o jogo fechar ao abrir, use \"Ver log\" e me envie o conteúdo.");
+        hint.setText(Txt.t("hint_log", "Se o jogo fechar ao abrir, use \"Ver log\" e me envie o conteúdo."));
         hint.setTextSize(13);
         hint.setTextColor(Color.rgb(140, 150, 160));
         hint.setGravity(Gravity.CENTER);
@@ -294,7 +295,7 @@ public class LetsGoLauncherActivity extends Activity {
         LetsGoImportJob ij = LetsGoImportJob.current();
         if (ij != null && !ij.finished) {
             android.widget.Toast.makeText(this,
-                "Aguarde a importação terminar antes de jogar.",
+                Txt.t("wait_import", "Aguarde a importação terminar antes de jogar."),
                 android.widget.Toast.LENGTH_LONG).show();
             return;
         }
@@ -345,7 +346,7 @@ public class LetsGoLauncherActivity extends Activity {
             refreshState();
         } else if ((req == REQ_IMPORT_DIR || req == REQ_IMPORT_DIR_FOLDER) && res == RESULT_OK
                 && data != null && data.getData() != null) {
-            android.widget.Toast.makeText(this, "Pasta escolhida, iniciando...",
+            android.widget.Toast.makeText(this, Txt.t("folder_ok", "Pasta escolhida, iniciando..."),
                     android.widget.Toast.LENGTH_SHORT).show();
             startImport(data.getData(), req == REQ_IMPORT_DIR_FOLDER);
         } else if (req == REQ_IMPORT_DRIVER && res == RESULT_OK
@@ -356,7 +357,7 @@ public class LetsGoLauncherActivity extends Activity {
                         android.widget.Toast.LENGTH_LONG).show();
             } else {
                 GpuDrivers.select(this, r.driver);
-                android.widget.Toast.makeText(this, "Driver instalado: " + r.driver.name,
+                android.widget.Toast.makeText(this, Txt.t("driver_new", "Driver instalado: ") + r.driver.name,
                         android.widget.Toast.LENGTH_SHORT).show();
             }
             // Refresh the driver status (recreate is simplest).

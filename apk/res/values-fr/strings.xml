@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The launcher's words in English and French. The code keeps the Portuguese
+     strings it always had, so a key missing here changes nothing. -->
+<resources>
+    <string name="cfg">Paramètres</string>
+    <string name="driver_new">Pilote installé : </string>
+    <string name="driver_set">Pilote sélectionné : </string>
+    <string name="driver_sys">Pilote du système sélectionné.</string>
+    <string name="drivers_none">Aucun pilote Turnip installé.</string>
+    <string name="export">Exporter</string>
+    <string name="folder_ok">Dossier choisi, démarrage…</string>
+    <string name="fps60">60 i/s (expérimental)</string>
+    <string name="gpu">Pilote graphique (Turnip)</string>
+    <string name="hint_log">Si le jeu se ferme au démarrage, utilise « Voir le journal » et envoie-moi ce qu’il indique.</string>
+    <string name="import_cancel">Importation annulée.</string>
+    <string name="import_done">Importation terminée en </string>
+    <string name="import_driver">Importer un pilote Turnip (.zip)</string>
+    <string name="import_error">Erreur d’importation :
+</string>
+    <string name="import_keys">Recherche de prod.keys et du NSP…</string>
+    <string name="import_run">Une importation est déjà en cours.</string>
+    <string name="import_start">Démarrage de l’importation vers :
+</string>
+    <string name="import_wait"> et attends qu\'elle atteigne 100 %.</string>
+    <string name="importing">Importation [</string>
+    <string name="in_use">Utilisé : pilote du système</string>
+    <string name="incomplete">Le jeu n\'a pas encore été importé complètement : appuie sur « </string>
+    <string name="installed">Installés : </string>
+    <string name="jog_folder">Importer le NSP en dossier (sans .bin)</string>
+    <string name="jog_nsp">Importer le jeu depuis un NSP</string>
+    <string name="lang">Langue du jeu :</string>
+    <string name="lang_de">Allemand</string>
+    <string name="lang_default">Par défaut (anglais / traduction brésilienne)</string>
+    <string name="lang_en">Anglais</string>
+    <string name="lang_es">Espagnol</string>
+    <string name="lang_fr">Français</string>
+    <string name="lang_it">Italien</string>
+    <string name="lang_ja">Japonais</string>
+    <string name="lang_ko">Coréen</string>
+    <string name="lang_zh">Chinois (simplifié)</string>
+    <string name="lang_zh_tw">Chinois (traditionnel)</string>
+    <string name="log_title">Journal de l’appli</string>
+    <string name="pick_hint">Choisis le dossier du jeu (avec extracted/romfs à l’intérieur).</string>
+    <string name="play">Jouer</string>
+    <string name="ready">Jeu prêt à démarrer.
+Dossier : </string>
+    <string name="refresh">Actualiser</string>
+    <string name="res">Résolution interne :</string>
+    <string name="res_05">0,5x (480p) - Performance</string>
+    <string name="res_075">0,75x (540p) - Équilibré</string>
+    <string name="res_1x">1x (720p) - Par défaut</string>
+    <string name="res_2x">2x (1080p) - Qualité</string>
+    <string name="romfs_missing">Dossier choisi, mais aucun romfs n’a été trouvé dedans.
+</string>
+    <string name="sel_folder">Choisir le dossier du jeu</string>
+    <string name="share">Partager</string>
+    <string name="smaa">Lisser les bords (SMAA)</string>
+    <string name="title">Let\'s Go Recomp</string>
+    <string name="touch">Commandes tactiles à l’écran</string>
+    <string name="use_system">Utiliser le pilote du système</string>
+    <string name="ver_log">Voir le journal</string>
+    <string name="wait_import">Attends la fin de l’importation avant de jouer.</string>
+    <string name="wild">Combats à l’état sauvage (expérimental)</string>
+    <string name="intro">Port non officiel de Pokémon : Let\'s Go, Évoli. Le jeu n\'est pas fourni : importe ta propre copie, puis joue.</string>
+    <string name="step1">Ton jeu</string>
+    <string name="step1_hint">Choisis le dossier qui contient ton fichier .nsp et ton prod.keys. L\'import prend quelques minutes, une seule fois.</string>
+    <string name="import_btn">Importer mon jeu (NSP)</string>
+    <string name="retry">Choisir un autre dossier</string>
+    <string name="alt_folder">J\'ai déjà un dossier extrait</string>
+    <string name="error_title">L\'import a échoué.</string>
+    <string name="keep_open">Garde l\'appli ouverte jusqu\'à 100 %. Si tu annules, l\'import reprendra là où il s\'est arrêté.</string>
+    <string name="done">Jeu importé.</string>
+    <string name="done_path">Stockage interne de l\'appli</string>
+    <string name="change">Changer</string>
+    <string name="step2">Jouer</string>
+    <string name="locked">Disponible une fois l\'étape 1 terminée.</string>
+    <string name="ready_hint">Si le jeu se ferme au démarrage, ouvre « Voir le journal » dans Avancé et envoie son contenu.</string>
+</resources>

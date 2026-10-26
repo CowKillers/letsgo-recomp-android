@@ -61,14 +61,14 @@ final class HomeScreen {
         root.setPadding(pad, pad, pad, pad);
 
         TextView title = new TextView(ctx);
-        title.setText("Let's Go Recomp");
+        title.setText(Txt.t("title", "Let's Go Recomp"));
         title.setTextSize(26);
         title.setTextColor(Color.WHITE);
         title.setGravity(Gravity.CENTER);
         root.addView(title, lp(-1, -2));
 
         TextView intro = new TextView(ctx);
-        intro.setText("Port não oficial de Pokémon: Let's Go, Évoli. O jogo não vem incluído: importe a sua própria cópia e depois jogue.");
+        intro.setText(Txt.t("intro", "Port não oficial de Pokémon: Let's Go, Évoli. O jogo não vem incluído: importe a sua própria cópia e depois jogue."));
         intro.setTextSize(14);
         intro.setTextColor(MUTED);
         intro.setGravity(Gravity.CENTER);
@@ -92,10 +92,10 @@ final class HomeScreen {
         s1.setBackground(card());
         s1.setPadding(dp(16), dp(14), dp(16), dp(14));
 
-        s1.addView(stepHeader("1", "Seu jogo"), lp(-1, -2));
+        s1.addView(stepHeader("1", Txt.t("step1", "Seu jogo")), lp(-1, -2));
 
         hint1 = new TextView(ctx);
-        hint1.setText("Escolha a pasta que contém o seu arquivo .nsp e o prod.keys. A importação leva alguns minutos e só é feita uma vez.");
+        hint1.setText(Txt.t("step1_hint", "Escolha a pasta que contém o seu arquivo .nsp e o prod.keys. A importação leva alguns minutos e só é feita uma vez."));
         hint1.setTextSize(13);
         hint1.setTextColor(MUTED);
         hint1.setPadding(0, dp(8), 0, 0);
@@ -105,7 +105,7 @@ final class HomeScreen {
         errorBox = new LinearLayout(ctx);
         errorBox.setOrientation(LinearLayout.VERTICAL);
         errorTitle = new TextView(ctx);
-        errorTitle.setText("A importação falhou.");
+        errorTitle.setText(Txt.t("error_title", "A importação falhou."));
         errorTitle.setTextSize(13);
         errorTitle.setTextColor(0xFFE06A5A);
         errorBox.addView(errorTitle, lp(-1, -2));
@@ -121,7 +121,7 @@ final class HomeScreen {
         LinearLayout progRow = new LinearLayout(ctx);
         progRow.setOrientation(LinearLayout.HORIZONTAL);
         TextView importingLabel = new TextView(ctx);
-        importingLabel.setText("Importando");
+        importingLabel.setText(Txt.t("importing", "Importando"));
         importingLabel.setTextSize(14);
         importingLabel.setTextColor(INK);
         progRow.addView(importingLabel, lp(-1, -2));
@@ -141,7 +141,7 @@ final class HomeScreen {
         progressFile.setPadding(0, dp(6), 0, 0);
         importingBox.addView(progressFile, lp(-1, -2));
         TextView keepOpen = new TextView(ctx);
-        keepOpen.setText("Mantenha o app aberto até 100%. Se cancelar, a próxima importação continua de onde parou.");
+        keepOpen.setText(Txt.t("keep_open", "Mantenha o app aberto até 100%. Se cancelar, a próxima importação continua de onde parou."));
         keepOpen.setTextSize(12);
         keepOpen.setTextColor(MUTED);
         keepOpen.setPadding(0, dp(6), 0, 0);
@@ -161,19 +161,19 @@ final class HomeScreen {
         // actions
         actions1 = new LinearLayout(ctx);
         actions1.setOrientation(LinearLayout.VERTICAL);
-        importBtn = button("Importar meu jogo (NSP)", true,
+        importBtn = button(Txt.t("import_btn", "Importar meu jogo (NSP)"), true,
                 new android.view.View.OnClickListener() {
                     @Override public void onClick(android.view.View v) { cb.onImportNsp(); }
                 });
         actions1.addView(importBtn, lp(-1, -2));
-        folderBtn = button("Já tenho uma pasta extraída", false,
+        folderBtn = button(Txt.t("alt_folder", "Já tenho uma pasta extraída"), false,
                 new android.view.View.OnClickListener() {
                     @Override public void onClick(android.view.View v) { cb.onUseExtractedFolder(); }
                 });
         LinearLayout.LayoutParams fblp = lp(-1, -2);
         fblp.topMargin = dp(6);
         actions1.addView(folderBtn, fblp);
-        retryBtn = button("Escolher outra pasta", true,
+        retryBtn = button(Txt.t("retry", "Escolher outra pasta"), true,
                 new android.view.View.OnClickListener() {
                     @Override public void onClick(android.view.View v) { cb.onImportNsp(); }
                 });
@@ -191,16 +191,16 @@ final class HomeScreen {
         s2.setBackground(card());
         s2.setPadding(dp(16), dp(14), dp(16), dp(14));
 
-        s2.addView(stepHeader("2", "Jogar"), lp(-1, -2));
+        s2.addView(stepHeader("2", Txt.t("step2", "Jogar")), lp(-1, -2));
 
         actions2 = new LinearLayout(ctx);
         actions2.setOrientation(LinearLayout.VERTICAL);
-        playBtn = button("Jogar", true,
+        playBtn = button(Txt.t("play", "Jogar"), true,
                 new android.view.View.OnClickListener() {
                     @Override public void onClick(android.view.View v) { cb.onPlay(); }
                 });
         actions2.addView(playBtn, lp(-1, -2));
-        changeBtn = button("Trocar", false,
+        changeBtn = button(Txt.t("change", "Trocar"), false,
                 new android.view.View.OnClickListener() {
                     @Override public void onClick(android.view.View v) { cb.onChangeFolder(); }
                 });
@@ -243,11 +243,11 @@ final class HomeScreen {
 
         if (failed) errorText.setText(error);
         if (ready) {
-            doneText.setText("Jogo importado." + "  "
-                    + "Armazenamento interno do app");
-            playNote.setText("Se o jogo fechar ao abrir, use \"Ver log\" em Avançado e me envie o conteúdo.");
+            doneText.setText(Txt.t("done", "Jogo importado.") + "  "
+                    + Txt.t("done_path", "Armazenamento interno do app"));
+            playNote.setText(Txt.t("ready_hint", "Se o jogo fechar ao abrir, use \"Ver log\" em Avançado e me envie o conteúdo."));
         } else {
-            playNote.setText("Disponível quando a etapa 1 terminar.");
+            playNote.setText(Txt.t("locked", "Disponível quando a etapa 1 terminar."));
         }
     }
 

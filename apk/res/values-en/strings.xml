@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The launcher's words in English and French. The code keeps the Portuguese
+     strings it always had, so a key missing here changes nothing. -->
+<resources>
+    <string name="cfg">Settings</string>
+    <string name="driver_new">Driver installed: </string>
+    <string name="driver_set">Driver selected: </string>
+    <string name="driver_sys">System driver selected.</string>
+    <string name="drivers_none">No Turnip driver installed.</string>
+    <string name="export">Export</string>
+    <string name="folder_ok">Folder chosen, starting...</string>
+    <string name="fps60">60 fps (experimental)</string>
+    <string name="gpu">GPU driver (Turnip)</string>
+    <string name="hint_log">If the game closes on start, use \"View log\" and send me what it says.</string>
+    <string name="import_cancel">Import cancelled.</string>
+    <string name="import_done">Import finished in </string>
+    <string name="import_driver">Import Turnip driver (.zip)</string>
+    <string name="import_error">Import error:
+</string>
+    <string name="import_keys">Looking for prod.keys and the NSP...</string>
+    <string name="import_run">An import is already running.</string>
+    <string name="import_start">Starting import to:
+</string>
+    <string name="import_wait"> and wait for it to reach 100%.</string>
+    <string name="importing">Importing [</string>
+    <string name="in_use">In use: system driver</string>
+    <string name="incomplete">The game has not been imported completely yet: tap \"</string>
+    <string name="installed">Installed: </string>
+    <string name="jog_folder">Import NSP to folder (no .bin)</string>
+    <string name="jog_nsp">Import game from NSP</string>
+    <string name="lang">Game language:</string>
+    <string name="lang_de">German</string>
+    <string name="lang_default">Default (English / PT-BR translation)</string>
+    <string name="lang_en">English</string>
+    <string name="lang_es">Spanish</string>
+    <string name="lang_fr">French</string>
+    <string name="lang_it">Italian</string>
+    <string name="lang_ja">Japanese</string>
+    <string name="lang_ko">Korean</string>
+    <string name="lang_zh">Chinese (simplified)</string>
+    <string name="lang_zh_tw">Chinese (traditional)</string>
+    <string name="log_title">App log</string>
+    <string name="pick_hint">Select the game folder (with extracted/romfs inside).</string>
+    <string name="play">Play</string>
+    <string name="ready">Game ready to start.
+Folder: </string>
+    <string name="refresh">Refresh</string>
+    <string name="res">Internal resolution:</string>
+    <string name="res_05">0.5x (480p) - Performance</string>
+    <string name="res_075">0.75x (540p) - Balanced</string>
+    <string name="res_1x">1x (720p) - Default</string>
+    <string name="res_2x">2x (1080p) - Quality</string>
+    <string name="romfs_missing">Folder selected, but no romfs was found in it.
+</string>
+    <string name="sel_folder">Select game folder</string>
+    <string name="share">Share</string>
+    <string name="smaa">Smooth edges (SMAA)</string>
+    <string name="title">Let\'s Go Recomp</string>
+    <string name="touch">On-screen touch controls</string>
+    <string name="use_system">Use the system driver</string>
+    <string name="ver_log">View log</string>
+    <string name="wait_import">Wait for the import to finish before playing.</string>
+    <string name="wild">Wild battles (experimental)</string>
+    <string name="intro">Unofficial port of Pokémon: Let\'s Go, Eevee! The game isn\'t included: import your own copy, then play.</string>
+    <string name="step1">Your game</string>
+    <string name="step1_hint">Pick the folder that holds your .nsp file and your prod.keys. Importing takes a few minutes, once.</string>
+    <string name="import_btn">Import my game (NSP)</string>
+    <string name="retry">Choose another folder</string>
+    <string name="alt_folder">I already have an extracted folder</string>
+    <string name="error_title">Import failed.</string>
+    <string name="keep_open">Keep the app open until 100%. If you cancel, the next import resumes where it stopped.</string>
+    <string name="done">Game imported.</string>
+    <string name="done_path">App internal storage</string>
+    <string name="change">Change</string>
+    <string name="step2">Play</string>
+    <string name="locked">Available once step 1 is done.</string>
+    <string name="ready_hint">If the game closes on start, open “View log” under Advanced and send what it says.</string>
+</resources>
