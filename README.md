@@ -62,6 +62,25 @@ capturas do jogo rodando no aparelho, apenas para demonstrar o estado do port.)
 | ![Centro Pokémon](screenshots/09-centro-pokemon.jpg) | |
 | Interior do Centro Pokémon renderizando (30 fps) | |
 
+### Novas capturas — texto renderizando
+
+Capturas novas: o texto aparece nas telas do jogo — seleção de idioma,
+tela de equipe e intro do Prof. Carvalho.
+
+| | |
+|---|---|
+| ![Telhado da cidade à noite](screenshots/10-telhado-cidade-noite.jpg) | ![Equipe e EXP](screenshots/11-equipe-exp.jpg) |
+| Mundo à noite renderizando | Tela de equipe com nomes, níveis e "Your Pokémon got 129 Exp. Points!" |
+| ![Seleção de idioma em português](screenshots/12-selecao-idioma-portugues.jpg) | ![Seleção de idioma em espanhol](screenshots/13-selecao-idioma-espanhol.jpg) |
+| Seleção de idioma em português, com texto | Seleção de idioma em espanhol, com texto |
+| ![Intro do Prof. Carvalho em francês](screenshots/14-intro-professor-frances.jpg) | |
+| Intro do Prof. Carvalho em francês, com texto (teste do contribuidor ptichalouf, Galaxy Z Fold7) | |
+
+### Vídeos
+
+- [Pokémon let's go Eevee android Port Giroscópio test](https://youtu.be/Wngih_skzco) — teste de giroscópio, com suporte a multi-idioma
+- [Pokémon let's go Eevee Android Port (PROBLEMAS RESOLVIDOS)](https://youtu.be/ZyWnYdSipb8) — textos e FPS/Turnip resolvidos com as PRs do ptichalouf
+
 ## Build rápido
 
 ```bash
@@ -84,3 +103,4 @@ Detalhes, pré-requisitos e armadilhas: **[BUILD.md](BUILD.md)**.
 - [raulzrrs / letsgo-recomp](https://github.com/raulzrrs/letsgo-recomp) — recompilação estática original
 - [peiikai / LASRecomp](https://github.com/peiikai/LASRecomp) — base do runtime (ver `LICENSE-LASRecomp`)
 - [Nycolazs / LASRecomp-Android-Plus](https://github.com/Nycolazs/LASRecomp-Android-Plus) — referência de port Android
+- [ptichalouf](https://github.com/ptichalouf) — 5 PRs que salvaram o projeto: idioma do jogo, link do runtime (DT_NEEDED), Turnip realmente ativo, tela inicial com o estado da instalação e o texto invisível (emissão 32 bits sem shaderInt64)
