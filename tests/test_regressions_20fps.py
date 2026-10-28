@@ -119,6 +119,9 @@ class Regressions20fps(unittest.TestCase):
         self.assertIn("setBackground(true)", pause)
         self.assertIn("setBackground(false)", resume)
         self.assertIn("nativeSetBackground", (SRC / "runtime/platform/android.c").read_text())
+        kernel = (SRC / "runtime/kernel.c").read_text()  # the other guest threads: at their SleepThread / yield
+        sleep = kernel[kernel.index("case 0x0B: {  // SleepThread"):]
+        self.assertLess(sleep.index("rt_background_wait();"), sleep.index("sched_yield()"))
 
     # 4 -------------------------------------------------------------------------------------------------------
     def diag_native(self, body):

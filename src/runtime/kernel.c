@@ -7,6 +7,7 @@
 
 #include "hle.h"
 #include "kernel.h"
+#include "lifecycle.h"
 #ifdef _WIN32
 #include "platform/windows_threads.h"
 #endif
@@ -756,6 +757,9 @@ static void svc_impl(Cpu *c, uint32_t imm, uint64_t pc) {
     }
     case 0x0A: longjmp(t_cur->unwind, 1);  // ExitThread: back to thread_main, which signals the thread object
     case 0x0B: {  // SleepThread (in slices of at most 50 ms: a reboot doesn't wait out a long sleep)
+        // In the background the game's other threads stop here too: with the presenting thread held (nvn/objects.c)
+        // they kept yielding / sleeping in a loop, ~70 % of a core on the Fold4 (t_8cc15f32). No kernel lock is held.
+        rt_background_wait();
         int64_t ns = (int64_t)x[0];
         if (ns <= 0) { sched_yield(); break; }
         for (uint64_t end = plat_now_ns() + (uint64_t)ns, now; !g_rt_unwind && (now = plat_now_ns()) < end;) {

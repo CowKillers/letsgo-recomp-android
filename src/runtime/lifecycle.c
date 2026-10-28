@@ -19,7 +19,7 @@ void rt_set_background(bool background) {
             bg_since_ns = now;
             LOG("[life] background: the game stops at its next present\n");
         } else {
-            LOG("[life] foreground: the game goes on (%.1f s in the background, %llu present waited)\n",
+            LOG("[life] foreground: the game goes on (%.1f s in the background, %llu waits: presents + guest sleeps)\n",
                 bg_since_ns ? (now - bg_since_ns) / 1e9 : 0.0, (unsigned long long)bg_waits);
         }
         atomic_store(&bg_on, background);
