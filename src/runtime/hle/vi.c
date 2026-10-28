@@ -4,6 +4,7 @@
 
 #include "../hle.h"
 #include "../kernel.h"
+#include "../lifecycle.h"
 
 static uint32_t vsync_r, vsync_w;
 static KEvent *vsync_event;
@@ -17,6 +18,9 @@ static void *vsync_thread(void *arg) {
     plat_thread_realtime(period);
     uint64_t next = plat_now_ns();
     for (;;) {
+        // In the background the vsync clock stops too: it woke the game's guest threads 60 times a second, and they
+        // kept ~65 % of a core busy on the Fold4 with the present held (t_8cc15f32). No lock is held here.
+        if (rt_in_background()) { rt_background_wait(); next = plat_now_ns(); }
         next += period;
         plat_sleep_until_ns(next);
         uint64_t now = plat_now_ns();

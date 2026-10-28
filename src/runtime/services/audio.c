@@ -10,6 +10,7 @@
 #include "../hle.h"
 #include "../settings.h"
 #include "../ipc.h"
+#include "../lifecycle.h"
 
 // ------------------------------------------------------------------ audren: a CPU mixer modelled on
 // Ryujinx's AudioRenderer (VoiceState / DataSourceHelper / StateUpdater, copies in notes/ryujinx_audio).
@@ -641,6 +642,8 @@ static void *renderer_tick(void *arg) {
         }
     }
     while (!r->quit) {
+        // In the background the audio clocks stop like the vsync one (hle/vi.c): no lock held here (t_8cc15f32).
+        if (rt_in_background()) { rt_background_wait(); next = 0; }
         if (r->stream) {
             while (SDL_GetAudioStreamQueued(r->stream) >= target && !r->quit) {
                 struct timespec ts = {0, 1000000};
@@ -1121,6 +1124,7 @@ static void *audout_thread(void *arg) {
     }
     uint64_t underruns = 0, last_report = 0;
     while (!a->quit) {
+        rt_background_wait();  // the background: see renderer_tick
         pthread_mutex_lock(&a->lock);
         uint64_t size = 0, tag = 0, data = 0;
         if (a->state == 0 && a->queued) { size = a->sizes[0]; tag = a->tags[0]; data = a->datas[0]; }

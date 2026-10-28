@@ -122,6 +122,14 @@ class Regressions20fps(unittest.TestCase):
         kernel = (SRC / "runtime/kernel.c").read_text()  # the other guest threads: at their SleepThread / yield
         sleep = kernel[kernel.index("case 0x0B: {  // SleepThread"):]
         self.assertLess(sleep.index("rt_background_wait();"), sleep.index("sched_yield()"))
+        # the host clocks that wake the guest threads (vsync 60 Hz, audio renderer / audout) stop too
+        vi = (SRC / "runtime/hle/vi.c").read_text()
+        vsync = vi[vi.index("static void *vsync_thread"):]
+        self.assertLess(vsync.index("rt_background_wait();"), vsync.index("kernel_signal(vsync_event)"))
+        audio = (SRC / "runtime/services/audio.c").read_text()
+        for fn, signal in (("static void *renderer_tick", "kernel_signal(r->event)"), ("static void *audout_thread", "SDL_PutAudioStreamData")):
+            body = audio[audio.index(fn):]
+            self.assertLess(body.index("rt_background_wait();"), body.index(signal), fn)
 
     # 4 -------------------------------------------------------------------------------------------------------
     def diag_native(self, body):
