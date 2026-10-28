@@ -4442,10 +4442,23 @@ static void exec_list(uint64_t handle, int depth) {
         case CMD_DOWNSAMPLE: { const TexRefRec *t = x; copy_texture(&t[0], &t[1], 1); break; }
         case CMD_COPY_BUFFER_TO_TEXTURE: copy_buffer_to_texture(r->x[0], x); break;
         case CMD_COPY_TEXTURE_TO_BUFFER: copy_texture_to_buffer(x, r->x[3]); break;
-        case CMD_COPY_BUFFER_TO_BUFFER:
-            renderer_flush();
+        case CMD_COPY_BUFFER_TO_BUFFER: {
+            // The game's GPU buffer copy, done by the CPU here, in command order. Waiting for all the submitted GPU work first
+            // is only needed when the GPU may read or write the game's memory in place: with the heap imported
+            // (VK_EXT_external_memory_host) vertices, constants and storage buffers can be read from it when the GPU runs.
+            // Without the import (Adreno, Turnip and Qualcomm drivers alike) the GPU only ever sees copies taken when each
+            // draw was recorded (guest_copy, vertex_copy, gcopy) and texture read-backs wait for themselves
+            // (copy_texture_to_buffer): the draws before this copy already hold the old bytes, the ones after it copy the
+            // new ones once the shared copies are dropped. Measured on a Fold4 in the world at 720p: 4 copies a frame, ~26 ms
+            // of render-thread waiting a frame. Idea from letsgo-recomp 741fa87 (raulzrrs, MIT), which waits only for the
+            // ranges the GPU touches; here the test is coarser (import or not). LARECOMP_VK_COPY_WAIT=1: always wait.
+            static int always = -1;
+            if (always < 0) always = getenv("LARECOMP_VK_COPY_WAIT") ? atoi(getenv("LARECOMP_VK_COPY_WAIT")) != 0 : 0;
+            if (always || g_vk.host_import) renderer_flush();
             memmove((void *)(uintptr_t)r->x[1], (void *)(uintptr_t)r->x[0], r->x[2]);
+            guest_copy_flush();  // (copies of these bytes shared within the submission are stale now, as after UpdateUniformBuffer)
             break;
+        }
         default: break;
         }
         p += r->size;
