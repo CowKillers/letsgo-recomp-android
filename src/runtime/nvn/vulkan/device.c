@@ -447,6 +447,89 @@ static bool create_surface(void) {
 #endif
 }
 
+// Watch successful queue presentations, not physical scanout. Lifecycle callbacks also
+// mark the target stale. Render-thread writes / Android UI reads use atomics.
+static atomic_uint g_last_present_ms;
+static atomic_uint g_stalled_since_ms;
+// UI thread raises a flag; render thread owns the swapchain.
+static atomic_bool g_resume_requested;
+// How long the display may stay silent before the game says so (LARECOMP_BLACK_SCREEN_MS, 8 s).
+static Uint32 black_screen_limit_ms(void) {
+    static Uint32 v = 0;
+    if (!v) {
+        const char *e = getenv("LARECOMP_BLACK_SCREEN_MS");
+        v = e ? (Uint32)atoi(e) : 8000;
+    }
+    return v;
+}
+// Called by the present path and by the state machine: the display works again.
+void display_alive(void) {
+    atomic_store(&g_last_present_ms, SDL_GetTicks());
+    atomic_store(&g_stalled_since_ms, 0);
+}
+// Called when the surface goes away: the display is dead until a new one is built.
+void display_dead(void) {
+    if (!atomic_load(&g_stalled_since_ms)) atomic_store(&g_stalled_since_ms, SDL_GetTicks());
+}
+// Back in the foreground (LetsGoActivity.onResume): the time spent in the background, where the game waits and presents
+// nothing (runtime/lifecycle.c), is not a silent display. The guard's limit counts again from now.
+void display_foreground(void) {
+    Uint32 now = SDL_GetTicks();
+    if (atomic_load(&g_stalled_since_ms)) atomic_store(&g_stalled_since_ms, now);
+    if (atomic_load(&g_last_present_ms)) atomic_store(&g_last_present_ms, now);
+}
+// 1 when the display has been silent for too long: the engine is alive but the screen shows nothing.
+int display_stalled(void) {
+    Uint32 limit = black_screen_limit_ms();
+    if (!limit) return 0;                       // 0 = the guard is off
+    Uint32 now = SDL_GetTicks();
+    Uint32 stalled = atomic_load(&g_stalled_since_ms);
+    if (stalled && (Uint32)(now - stalled) > limit) return 1;
+    // Nothing reached the screen since the last good frame.
+    Uint32 last = atomic_load(&g_last_present_ms);
+    if (last && (Uint32)(now - last) > limit) return 1;
+    return 0;
+}
+// How long the display has been silent, in ms (0 when it is fine).
+int display_stalled_ms(void) {
+    Uint32 now = SDL_GetTicks();
+    Uint32 worst = 0;
+    Uint32 stalled = atomic_load(&g_stalled_since_ms);
+    if (stalled) { Uint32 d = now - stalled; if (d > worst) worst = d; }
+    Uint32 last = atomic_load(&g_last_present_ms);
+    if (last) { Uint32 d = now - last; if (d > worst) worst = d; }
+    return (int)worst;
+}
+// Rebuild on request; the next accepted present clears the watchdog.
+void display_resume_requested(void) {
+    // Android lifecycle callbacks and the manual button both request a render-thread rebuild.
+    LOG("[vk] display surface rebuild requested\n");
+    atomic_store(&g_resume_requested, true);
+}
+
+// Diagnostic recipe only. Java exports the variable only when debug.larecomp.diag=1
+// AND debug.larecomp.force_display_stalled=1. Hold before acquire (no semaphore/image
+// left in flight), after the first good picture, until a rebuild request releases it.
+static bool force_display_stalled(bool resume) {
+    static int enabled = -1;
+    static bool started, finished;
+    if (enabled < 0) {
+        const char *e = getenv("LARECOMP_FORCE_DISPLAY_STALLED");
+        enabled = e && !strcmp(e, "1");
+    }
+    if (!enabled || finished) return false;
+    if (resume && started) {
+        finished = true;
+        LOG("[display-guard] diagnostic hold released by rebuild request\n");
+        return false;
+    }
+    if (!atomic_load(&g_last_present_ms)) return false;
+    if (!started) LOG("[display-guard] diagnostic hold started at %u ms (engine continues)\n", (unsigned)SDL_GetTicks());
+    started = true;
+    display_dead();
+    return true;
+}
+
 // ================================================================== instance / device
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(VkDebugUtilsMessageSeverityFlagBitsEXT sev, VkDebugUtilsMessageTypeFlagsEXT type,
                                                const VkDebugUtilsMessengerCallbackDataEXT *d, void *user) {

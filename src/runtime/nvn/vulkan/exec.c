@@ -21,6 +21,7 @@
 // Forward declaration for hmix (defined as static later)
 static uint64_t hmix(uint64_t h, const void *p, size_t n);
 #include "../../settings.h"
+#include "../../diag.h"
 
 static uint64_t g_draws_total;  // (never reset: LARECOMP_COUNTER_LOG)
 static uint64_t stat_draws, stat_skipped, stat_passes, stat_dispatches, stat_wait_ns, stat_flushes, stat_feedback_copies;
@@ -1883,9 +1884,10 @@ static void build_pipeline(void *arg) {
     if (g_pipe_exec_stats) pi.flags |= VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR;
     // MISSÃO 1 v0068: log detalhado antes de vkCreateGraphicsPipelines
     // Para identificar o pipeline que causa SIGSEGV no driver Qualcomm
+    // Diagnostic only (rt_diag): an append + flush to the shared game folder per pipeline (10 MB on the owner's phone).
     static _Atomic uint64_t pipe_attempt_id = 0;
     uint64_t attempt = atomic_fetch_add(&pipe_attempt_id, 1);
-    {
+    if (rt_diag()) {
         // Escreve em arquivo persistente com flush imediato
         const char *root = getenv("LARECOMP_DATA_ROOT");
         char path[1024];
@@ -1943,7 +1945,7 @@ static void build_pipeline(void *arg) {
         }
     }
     VkResult r = vkCreateGraphicsPipelines(g_vk.dev, use_pcache, 1, &pi, NULL, &pp->pipe);
-    {
+    if (rt_diag()) {
         // PIPELINE_CREATE_END marker
         const char *root = getenv("LARECOMP_DATA_ROOT");
         char path[1024];
@@ -2656,7 +2658,7 @@ static void texture_info(int stage, ShaderInfo *si, int i, VkDescriptorImageInfo
             uint64_t taddr = (uint64_t)(uintptr_t)e->tex->addr;
             int is_font_atlas = (e->tex->format == 0x1 && e->tex->width == 2048 && e->tex->height == 1024);
             int is_small_font = (e->tex->format == 0x1 && e->tex->width == 64 && e->tex->height == 64);
-            if (is_font_atlas || is_small_font) {
+            if (rt_diag() && (is_font_atlas || is_small_font)) {  // (off: no flag, so draw_'s font probes stay idle)
                 static int n_font_bind = 0;
                 // MISSÃO C: flag global para instrumentação no draw
                 extern _Atomic int g_font_atlas_bound;
@@ -2953,8 +2955,9 @@ static void draw_(CmdRec *r, bool indexed) {
     // FALHA 1: instrumentação robusta com contadores
     // MISSÃO 1 v0064: inclui hash do fragment shader para identificação
     // MISSÃO C v0065: gatilho de captura sob demanda via arquivo
+    // Diagnostic only (rt_diag): it polls a trigger file on the shared storage at every text draw and logs 500 lines.
     atomic_fetch_add(&cnt_text_candidates, 1);
-    if (atomic_load(&g_font_atlas_bound)) {
+    if (rt_diag() && atomic_load(&g_font_atlas_bound)) {
         atomic_fetch_add(&cnt_text_matched, 1);
         static int n_font_draw = 0;
         // MISSÃO C: verifica gatilho de captura sob demanda
@@ -3173,7 +3176,9 @@ static void draw_(CmdRec *r, bool indexed) {
     // pipeline built from the Prog's TEXT_DIAG SPIR-V). The log line is the proof: if the
     // original was 0 and text/magenta appears, write_mask was the killer; if the original
     // was already 0xF, write_mask is eliminated by the same log.
-    {
+    // Diagnostic only (rt_diag): measured orig=15 on Turnip (Fold7 log 28/10) and on the S23 (ISSUES.md) — a no-op
+    // there, but it still changes the pipeline key and hashes 512 bytes per draw.
+    if (rt_diag()) {
         uint64_t fs_fsh_wm = pr->code[1] ? hmix(1469598103934665603ull, (const void *)(uintptr_t)(pr->code[1] + 0x30), 0x200) : 0;
         if (fs_fsh_wm == 0x6443b63b341c73caULL) {
             static int wm_logged = 0;
@@ -3189,7 +3194,7 @@ static void draw_(CmdRec *r, bool indexed) {
     // when bound (float interpretation + raw bytes, so a non-float format still
     // shows whether the values vary across vertices). This is the proof for
     // whether the A0_FIX above was load-bearing or a no-op.
-    {
+    if (rt_diag()) {
         uint64_t fs_fsh_a0 = pr->code[1] ? hmix(1469598103934665603ull, (const void *)(uintptr_t)(pr->code[1] + 0x30), 0x200) : 0;
         if (fs_fsh_a0 == 0x6443b63b341c73caULL) {
             static int a0_logged = 0;
@@ -3231,7 +3236,7 @@ static void draw_(CmdRec *r, bool indexed) {
     // the menu draw (whose VS uses the same cb3[0..3] matrix and works), so the
     // next test can compare. cb3 (VS binding 3) comes from st.ubuf[0][0] via
     // cbuf_info; addr == 0 means cbuf_info binds a zeros buffer.
-    {
+    if (rt_diag()) {
         uint64_t fs_fsh_cb3 = pr->code[1] ? hmix(1469598103934665603ull, (const void *)(uintptr_t)(pr->code[1] + 0x30), 0x200) : 0;
         if (fs_fsh_cb3 == 0x6443b63b341c73caULL || fs_fsh_cb3 == 0x7270eb69fbeccceeULL) {
             static int cb3_logged_dlg = 0, cb3_logged_menu = 0;
@@ -3437,7 +3442,7 @@ static void draw_(CmdRec *r, bool indexed) {
         // [font-state] only logs GUEST st.viewport/st.scissor (full 1920x1080); the final
         // rect after widescreen scaling + pass clamping was never logged. If this shows
         // a 0x0 scissor, scissor is the killer; if full, scissor is eliminated.
-        if (g_text_fshash == 0x6443b63b341c73caULL) {
+        if (rt_diag() && g_text_fshash == 0x6443b63b341c73caULL) {
             static int sc_logged = 0;
             if (sc_logged < 3) {
                 sc_logged++;
@@ -3595,7 +3600,9 @@ static void draw_(CmdRec *r, bool indexed) {
     // the dialog shader only. If text/magenta appears, the killer was one of
     // these; if not, both are ruled out in one shot. Each draw sets its own
     // dynamic state at its start, so this override cannot leak to other draws.
-    if (g_text_fshash == 0x6443b63b341c73caULL) {
+    // Diagnostic only (rt_diag): ISSUES.md v0085 "forced NONE/OFF, nothing changed"; with it off the dialog keeps the
+    // game's own cull/depth state like every other draw (checked on the Fold4: dialog text drawn, t_8cc15f32).
+    if (rt_diag() && g_text_fshash == 0x6443b63b341c73caULL) {
         vkCmdSetCullMode(cb, VK_CULL_MODE_NONE);
         vkCmdSetDepthTestEnable(cb, VK_FALSE);
         static int ov_logged = 0;

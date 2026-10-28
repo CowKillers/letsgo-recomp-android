@@ -16,6 +16,25 @@ public class LetsGoActivity extends SDLActivity {
         };
     }
 
+    /** The master diagnostic switch: on only for the exact value "1" (empty, unset, "0", "true"... = off). */
+    static boolean diagEnabled(String property) {
+        return "1".equals(property == null ? null : property.trim());
+    }
+
+    private static String systemProperty(String key) {
+        try {
+            return String.valueOf(Class.forName("android.os.SystemProperties")
+                    .getMethod("get", String.class, String.class).invoke(null, key, ""));
+        } catch (Throwable e) {
+            return "";
+        }
+    }
+
+    // Separate opt-in: the master diagnostic gate alone must not stop presentation.
+    static boolean forceDisplayStalled(String diagProperty, String forceProperty) {
+        return "1".equals(diagProperty) && "1".equals(forceProperty);
+    }
+
     private void applyFullscreen() {
         // Simplified: rely on theme (@style/Fullscreen) + SDL_SetWindowFullscreen.
         // SDLActivity handles COMMAND_CHANGE_WINDOW_STYLE via WindowInsetsController.
@@ -45,15 +64,20 @@ public class LetsGoActivity extends SDLActivity {
         } catch (Exception e) {
             android.util.Log.w("lasrecomp", "[text] vflip setup: " + e);
         }
-        // v0069: dump de GLSL ativado por padrão para diagnóstico do shader de texto
+        // Sondas de diagnóstico do texto: DESLIGADAS por padrão. Elas pintam o texto de magenta,
+        // forçam quads e inundam o log ([gcopy]/[gcopy-diag]), o que deixa o diálogo ilegível e
+        // o jogo lento. Um único interruptor as liga todas: `adb shell setprop debug.larecomp.diag 1`,
+        // e só vale para o próximo lançamento do jogo. Only the property decides (the process outlives a launch: an
+        // environment left by an earlier launch must not switch them on), and the runtime's own probes (pipeline log,
+        // atlas dump, font/tex audits, dialog overrides: runtime/diag.h) follow the same LARECOMP_DIAG.
+        boolean diag = diagEnabled(systemProperty("debug.larecomp.diag"));
         try {
-            android.system.Os.setenv("LARECOMP_DUMP_FONT_GLSL", "1", true);
-            android.util.Log.i("lasrecomp", "[shader] GLSL dump ENABLED (v0069 diagnostic)");
+            if (diag) android.system.Os.setenv("LARECOMP_DIAG", "1", true);
+            else android.system.Os.unsetenv("LARECOMP_DIAG");
         } catch (Exception e) {
-            android.util.Log.w("lasrecomp", "[shader] glsl dump setup: " + e);
+            android.util.Log.w("lasrecomp", "[diag] LARECOMP_DIAG: " + e);
         }
-        // v0071 ETAPA 3: modo diagnóstico magenta para shaders de texto
-        // 1 = magenta opaco sem discard | 2 = magenta com discard | 0 = desligado
+        // Strict property gate, independent of the legacy LARECOMP_DIAG fallback.
         try {
             android.system.Os.setenv("LARECOMP_TEXT_DIAG", "1", true);
             android.util.Log.i("lasrecomp", "[shader] TEXT_DIAG mode 1 ENABLED (v0071: magenta, no discard)");
@@ -172,6 +196,18 @@ public class LetsGoActivity extends SDLActivity {
         }
         nativeSetup(gameDir, getApplicationInfo().nativeLibraryDir);
         super.onCreate(savedInstanceState);
+        // SurfaceView can replace the native producer without changing its Java Surface and
+        // without a Vulkan error. Observe lifecycle changes even while presentation is READY.
+        mSurface.getHolder().addCallback(new android.view.SurfaceHolder.Callback() {
+            public void surfaceCreated(android.view.SurfaceHolder h) { nativeResumeDisplay(); }
+            public void surfaceChanged(android.view.SurfaceHolder h, int f, int w, int height) {
+                nativeResumeDisplay();
+            }
+            public void surfaceDestroyed(android.view.SurfaceHolder h) {
+                nativeDisplaySurfaceGone();
+                if (!resumed) setBackground(true);  // (normally onPause came first; never stop a foreground game here)
+            }
+        });
         // Apply fullscreen AFTER super.onCreate (SDLActivity resets UI visibility)
         applyFullscreen();
         // Touch gamepad overlay (Xbox 360 layout) - toggleable in launcher settings
@@ -190,6 +226,26 @@ public class LetsGoActivity extends SDLActivity {
         // Fullscreen handled by theme + SDL_SetWindowFullscreen (like Wonder).
         // No manual intervention to avoid conflicts with SDLActivity.
         setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+        // The game computes again (it waited at its present while in the background: runtime/lifecycle.c), and the
+        // display guard watches the presentation while the game is in the foreground.
+        setBackground(false);
+    }
+
+    /** The game stops at its next present while the activity is in the background (home, another app, screen off):
+     *  it used to keep computing until Android killed it for excessive CPU. A surface lost in the foreground (fold,
+     *  rotation) does not stop it: DisplayGuard's rebuild needs the game's presents (surfaceDestroyed below). */
+    private boolean resumed;
+    private void setBackground(boolean background) {
+        resumed = !background;
+        try { nativeSetBackground(background); }
+        catch (UnsatisfiedLinkError e) { /* the runtime was refused (rejectBuild): nothing runs */ }
+    }
+
+
+    @Override
+    protected void onPause() {
+        setBackground(true);
+        super.onPause();
     }
 
     @Override
@@ -210,4 +266,13 @@ public class LetsGoActivity extends SDLActivity {
     public static native void nativeSetStick(int stick, int x, int y);
     public static native double nativeGetFps();
     public static native double nativeGetFrameMs();
+    /** True when the engine runs but nothing reaches the screen (the black-screen guard). */
+    public static native boolean nativeDisplayStalled();
+    /** How long the display has been silent, in ms (0 when it is fine). */
+    public static native int nativeDisplayStalledMs();
+    /** The player asked to rebuild the surface and show the picture again. */
+    public static native void nativeResumeDisplay();
+    private static native void nativeDisplaySurfaceGone();
+    /** The activity left (true) or came back to (false) the foreground: runtime/lifecycle.c. */
+    static native void nativeSetBackground(boolean background);
 }

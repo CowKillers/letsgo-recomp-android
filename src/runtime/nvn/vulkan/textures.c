@@ -13,6 +13,7 @@
 #include <errno.h>
 
 #include "vk.h"
+#include "../../diag.h"
 #include "../astc.h"
 #include "../renderer.h"
 
@@ -531,7 +532,8 @@ static void upload_texture(NvnTexture *t, TexBackend *b) {
     VkFmt mf = fmt_of(t->format);
     // Text audit diagnostic: log the first uploads of single/two-channel textures
     // (glyph atlases) so we can see if/when the font texture reaches the GPU.
-    if (fi->bpb <= 2 && !b->uploaded) {
+    // Diagnostic only (rt_diag), like the scan and the dump below.
+    if (rt_diag() && fi->bpb <= 2 && !b->uploaded) {
         static int nd;
         if (nd++ < 24)
             LOG("[tex-audit] first upload: fmt=0x%x bpb=%d %ux%u addr=0x%llx flags=0x%x\n",
@@ -574,7 +576,9 @@ static void upload_texture(NvnTexture *t, TexBackend *b) {
     prof_tex_checks++;
     // Text audit: for small textures (glyph atlases are R8/RG8), report the byte range so we
     // can see whether the game ever wrote glyph data into them (max==0 => completely empty).
-    if (fi->bpb <= 2) {
+    // Diagnostic only (rt_diag): a byte-by-byte scan of every R8/RG8 texture at each check, and a 2 MB atlas file
+    // written to the shared game folder.
+    if (rt_diag() && fi->bpb <= 2) {
         const uint8_t *m = (const uint8_t *)(uintptr_t)t->addr;
         uint8_t mn = 255, mx = 0;
         uint64_t nz = 0;

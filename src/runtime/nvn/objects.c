@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "../kernel.h"
+#include "../lifecycle.h"
 #include "nvn.h"
 
 void renderer_sync(void);
@@ -761,6 +762,7 @@ NVN(nvnQueuePresentTexture) {
             p = *end == ';' ? end + 1 : end;
         }
     }
+    rt_background_wait();  // the activity is in the background: the game stops here until it is in front (lifecycle.h)
     g_last_interval = w->interval;
     { extern void fps60_present(void); fps60_present(); }
     present_pace(w->interval);

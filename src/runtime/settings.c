@@ -28,6 +28,14 @@ Settings g_settings = {
     .render_thread = true,
     .vertex_read = VREAD_AUTO,
     .upscaler = UPSCALE_SHARP,
+    .profile_world_height = 720,
+    // Battles, captures and menus at the world's height by default: 1080p cost the most there (Fold7 28/10: 19 fps in
+    // a capture at 1080p, 25-30 in the world at 720p with as many draws). 1080p stays one choice away in the launcher.
+    .profile_battle_height = 720,
+    .profile_world_smaa = false,
+    .profile_battle_smaa = false,
+    .profile_world_aspect = PASP_GAME,
+    .profile_battle_aspect = PASP_GAME,
 #ifdef __ANDROID__
     .antialias = AA_OFF,  // Android: SMAA costs 6 fullscreen passes, too heavy for mobile GPUs
 #else
@@ -37,6 +45,95 @@ Settings g_settings = {
 
 // Unknown keys (an older larecomp.ini: Link's Awakening's options from LAS Recomp) are ignored, and dropped at the
 // next save.
+// Per-scene profiles (profiles_auto = 1). A switch changes two things only, both without building a shader at the
+// moment of the switch: the internal height (a scaled image is re-created at its next use, the shaders do not depend on
+// the size: the viewport is dynamic) and the SMAA passes (their pipelines are built by the render thread BEFORE the
+// first switch: settings_profile_set_prewarmed). The image format stays cold (the camera is patched once at boot).
+// Until the renderer has said it is prewarmed the switch is refused, and the refusal is logged. A new scene must hold
+// for PROFILE_HOLD presents before it switches: a one-frame menu flash never reallocates the render targets.
+// Back to the world the hold is shorter and tolerates gaps: right after a battle (or with the battle profile's heavier
+// image) the world does not update at every present, and a hold that restarted at each present without a world update
+// kept the battle profile for 291 presents (~14 s, Fold7 28/10) after "[scene] world again". The world profile now
+// comes after WORLD_HOLD presents that updated the world, as long as no PROFILE_HOLD presents in a row went without one.
+// Never mutate the shared settings here (the render worker may still be using the previous frame): the live values are
+// atomics, read by the render thread.
+#define PROFILE_HOLD 24
+#define WORLD_HOLD 4
+uint64_t renderer_game_frame(void);
+static atomic_int g_live_height, g_live_smaa = -1, g_prewarmed;
+bool settings_profiles_rejected(void) { return !g_settings.profiles_auto; }
+int settings_profile_live_height(void) { return atomic_load(&g_live_height); }
+int settings_profile_live_smaa(void) { return atomic_load(&g_live_smaa); }
+void settings_profile_set_prewarmed(bool done) { atomic_store(&g_prewarmed, done); }
+bool settings_profile_prewarm_wanted(void) {
+    return g_settings.profiles_auto && (g_settings.profile_world_smaa || g_settings.profile_battle_smaa || g_settings.upscaler == UPSCALE_FSR1);
+}
+void settings_profile_apply(void) {
+    static int last = -1, world = 0, away = 0, applied = -1;
+    RtScene scene = fps60_profile_scene();
+    {   // LARECOMP_PROFILE_FORCE=<presents> (Android: setprop debug.larecomp.profile_force): test aid, flips the scene every N presents (a measured switch needs no battle)
+        static long force = -1;
+        if (force < 0) {
+            force = getenv("LARECOMP_PROFILE_FORCE") ? atol(getenv("LARECOMP_PROFILE_FORCE")) : 0;
+#ifdef __ANDROID__
+            char pv[PROP_VALUE_MAX] = "";  // adb shell setprop debug.larecomp.profile_force <presents>
+            if (!force && __system_property_get("debug.larecomp.profile_force", pv) > 0) force = atol(pv);
+#endif
+        }
+        if (force > 0) scene = (renderer_game_frame() / (uint64_t)force) & 1 ? RT_SCENE_BATTLE : RT_SCENE_WORLD;
+    }
+    if (!g_settings.profiles_auto) {
+        if ((int)scene == last) return;
+        last = scene;
+        int want = scene == RT_SCENE_WORLD ? 0 : 1;
+        LOG("[profiles] scene=%s requested=%s switch=refused reason=profiles_auto-off\n",
+            scene == RT_SCENE_WORLD ? "world" : scene == RT_SCENE_BATTLE ? "battle/capture" : "menu/loading", want ? "battle-menus" : "world");
+        return;
+    }
+    // world: presents that updated the world since the last PROFILE_HOLD presents in a row without one; away: that run
+    if (scene == RT_SCENE_WORLD) { away = 0; if (world < WORLD_HOLD) world++; }
+    else if (away < PROFILE_HOLD && ++away == PROFILE_HOLD) world = 0;
+    int want = world >= WORLD_HOLD ? 0 : away >= PROFILE_HOLD ? 1 : applied;  // 0 = WORLD profile, 1 = BATTLE / MENUS
+    if (want < 0 || want == applied) return;
+    if (settings_profile_prewarm_wanted() && !atomic_load(&g_prewarmed)) {
+        static bool said;
+        if (!said) { said = true; LOG("[profiles] scene=%s requested=%s switch=refused reason=renderer-not-prewarmed\n",
+                                      scene == RT_SCENE_WORLD ? "world" : "battle/menus", want ? "battle-menus" : "world"); }
+        return;
+    }
+    int h = want ? g_settings.profile_battle_height : g_settings.profile_world_height;
+    bool aa = want ? g_settings.profile_battle_smaa : g_settings.profile_world_smaa;
+    int fmt = want ? g_settings.profile_battle_aspect : g_settings.profile_world_aspect;
+    atomic_store(&g_live_height, h);
+    atomic_store(&g_live_smaa, aa ? 1 : 0);
+    extern long fps60_world_back(void);  // (hle/fps60.c: the present the world came back at after a battle, -1 = none)
+    long back = fps60_world_back();
+    uint64_t now = renderer_game_frame();
+    // the first world switch after a battle / capture: how many presents after "[scene] world again" (the old hold: 291)
+    static long told = -1;
+    char since[48] = "";
+    if (!want && back >= 0 && back != told && (uint64_t)back <= now) {
+        told = back;
+        snprintf(since, sizeof since, " after_world_again=%llu", (unsigned long long)(now - (uint64_t)back));
+    }
+    LOG("[profiles] scene=%s profile=%s switch=applied present=%llu height=%d smaa=%d format=%d(cold) prewarmed=%d%s\n",
+        scene == RT_SCENE_WORLD ? "world" : scene == RT_SCENE_BATTLE ? "battle/capture" : "menu/loading", want ? "battle-menus" : "world",
+        (unsigned long long)now, h, aa, fmt, atomic_load(&g_prewarmed), since);
+    applied = want;
+}
+
+// profiles_version = 2: the file was written once battles default to the world's height. An older file holding
+// profile_battle_height = 1080 holds the old default (the launcher and the start screen wrote every key), not a choice:
+// it follows the world's height. A height picked from now on writes the version with it and stays as chosen.
+#define PROFILES_VERSION 2
+static int g_profiles_version;
+static void profiles_upgrade(void) {
+    if (g_profiles_version >= PROFILES_VERSION || g_settings.profile_battle_height != 1080) return;
+    g_settings.profile_battle_height = g_settings.profile_world_height ? g_settings.profile_world_height : 720;
+    LOG("[profiles] battle height 1080 from an older settings file (the old default) -> %d, like the world\n",
+        g_settings.profile_battle_height);
+}
+
 static void parse_line(const char *line) {
     char key[64];
     char val[128];
@@ -69,6 +166,14 @@ static void parse_line(const char *line) {
     else if (!strcmp(key, "vertex_read")) g_settings.vertex_read = !strcmp(val, "direct") ? VREAD_DIRECT : !strcmp(val, "copy") ? VREAD_COPY : VREAD_AUTO;
     else if (!strcmp(key, "dpad_move")) g_settings.dpad_move = atoi(val) != 0;
     else if (!strcmp(key, "wild_battle")) g_settings.wild_battle = atoi(val) != 0;
+    else if (!strcmp(key, "profiles_auto")) g_settings.profiles_auto = atoi(val) != 0;
+    else if (!strcmp(key, "profiles_version")) g_profiles_version = atoi(val);
+    else if (!strcmp(key, "profile_world_height")) g_settings.profile_world_height = atoi(val) >= 360 && atoi(val) <= 4320 ? atoi(val) : 0;
+    else if (!strcmp(key, "profile_battle_height")) g_settings.profile_battle_height = atoi(val) >= 360 && atoi(val) <= 4320 ? atoi(val) : 0;
+    else if (!strcmp(key, "profile_world_smaa")) g_settings.profile_world_smaa = atoi(val) != 0;
+    else if (!strcmp(key, "profile_battle_smaa")) g_settings.profile_battle_smaa = atoi(val) != 0;
+    else if (!strcmp(key, "profile_world_aspect")) g_settings.profile_world_aspect = atoi(val) == PASP_43 ? PASP_43 : atoi(val) == PASP_FILL ? PASP_FILL : PASP_GAME;
+    else if (!strcmp(key, "profile_battle_aspect")) g_settings.profile_battle_aspect = atoi(val) == PASP_43 ? PASP_43 : atoi(val) == PASP_FILL ? PASP_FILL : PASP_GAME;
     else bind_settings_load(key, val);  // bind_pad_* / bind_key_*: runtime/hle/bindings.c
 }
 
@@ -99,6 +204,7 @@ void settings_load(void) {
         }
     }
     fclose(f);
+    profiles_upgrade();
     if (g_settings.volume < 0) g_settings.volume = 0;
     if (g_settings.volume > 2) g_settings.volume = 2;
 #ifdef __ANDROID__
@@ -133,6 +239,14 @@ void settings_save(void) {
     fprintf(f, "vertex_read = %s\n", g_settings.vertex_read == VREAD_DIRECT ? "direct" : g_settings.vertex_read == VREAD_COPY ? "copy" : "auto");
     fprintf(f, "dpad_move = %d\n", g_settings.dpad_move);
     fprintf(f, "wild_battle = %d\n", g_settings.wild_battle);
+    fprintf(f, "profiles_auto = %d\n", g_settings.profiles_auto);
+    fprintf(f, "profiles_version = %d\n", PROFILES_VERSION);
+    fprintf(f, "profile_world_height = %d\n", g_settings.profile_world_height);
+    fprintf(f, "profile_battle_height = %d\n", g_settings.profile_battle_height);
+    fprintf(f, "profile_world_smaa = %d\n", g_settings.profile_world_smaa);
+    fprintf(f, "profile_battle_smaa = %d\n", g_settings.profile_battle_smaa);
+    fprintf(f, "profile_world_aspect = %d\n", g_settings.profile_world_aspect);
+    fprintf(f, "profile_battle_aspect = %d\n", g_settings.profile_battle_aspect);
     fprintf(f, "game_lang = %s\n", g_settings.game_lang);
     bind_settings_save(f);
     fclose(f);

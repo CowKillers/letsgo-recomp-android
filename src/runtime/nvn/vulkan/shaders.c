@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 
 #include "shaders.h"
+#include "../../diag.h"
 
 void vk_shaders_init(void) {  // (compilers are per thread: check shaderc works at all)
     shaderc_compiler_t c = shaderc_compiler_initialize();
@@ -141,8 +142,8 @@ uint32_t *vk_glsl_to_spirv(const char *src, int stage, const char *name, size_t 
     uint64_t h = src_hash(src, stage);
     // MISSÃO 1 v0073: vínculo NVN → GLSL
     // nvn_hash é o fshash (hmix sobre bytes do shader Maxwell), mesma fórmula do [font-draw]
-    // Loga o mapeamento entre fshash (log) e hash GLSL (arquivo)
-    if (nvn_hash) {
+    // Loga o mapeamento entre fshash (log) e hash GLSL (arquivo). Diagnostic only (rt_diag): one line per shader.
+    if (rt_diag() && nvn_hash) {
         LOG("[shader] NVN2GLSL: fshash=%016llx -> glsl=%016llx stage=%d name=%s\n",
             (unsigned long long)nvn_hash, (unsigned long long)h, stage, name);
     }

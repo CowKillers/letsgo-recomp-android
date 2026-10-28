@@ -32,6 +32,7 @@
 #include <unistd.h>
 #include <unwind.h>
 
+#include "../lifecycle.h"
 #include "../platform.h"
 #include "../paths.h"   // RT_APP_NAME
 #include "../rt.h"      // LOG
@@ -396,4 +397,35 @@ JNIEXPORT jdouble JNICALL Java_com_letsgorecomp_LetsGoActivity_nativeGetFps(JNIE
 JNIEXPORT jdouble JNICALL Java_com_letsgorecomp_LetsGoActivity_nativeGetFrameMs(JNIEnv *env, jclass cls) {
     (void)env; (void)cls;
     return g_frame_ms;
+}
+// ---- the display guard: is the picture reaching the screen? (runtime/nvn/vulkan/device.c)
+// 1 when the engine runs but nothing has been presented for a while (the screen is black).
+extern int display_stalled(void);
+extern int display_stalled_ms(void);
+JNIEXPORT jboolean JNICALL Java_com_letsgorecomp_LetsGoActivity_nativeDisplayStalled(JNIEnv *env, jclass cls) {
+    (void)env; (void)cls;
+    return display_stalled() ? JNI_TRUE : JNI_FALSE;
+}
+JNIEXPORT jint JNICALL Java_com_letsgorecomp_LetsGoActivity_nativeDisplayStalledMs(JNIEnv *env, jclass cls) {
+    (void)env; (void)cls;
+    return (jint)display_stalled_ms();
+}
+// The activity left / came back to the foreground (onPause / onResume): the game stops at its next present while it is
+// in the background (runtime/lifecycle.c). Coming back restarts the display guard's clock (device.c display_foreground).
+extern void display_foreground(void);
+JNIEXPORT void JNICALL Java_com_letsgorecomp_LetsGoActivity_nativeSetBackground(JNIEnv *env, jclass cls, jboolean background) {
+    (void)env; (void)cls;
+    if (!background) display_foreground();
+    rt_set_background(background);
+}
+// The player pressed "resume the picture": ask the runtime to rebuild its surface and swapchain.
+extern void display_resume_requested(void);
+extern void display_dead(void);
+JNIEXPORT void JNICALL Java_com_letsgorecomp_LetsGoActivity_nativeDisplaySurfaceGone(JNIEnv *env, jclass cls) {
+    (void)env; (void)cls;
+    display_dead();
+}
+JNIEXPORT void JNICALL Java_com_letsgorecomp_LetsGoActivity_nativeResumeDisplay(JNIEnv *env, jclass cls) {
+    (void)env; (void)cls;
+    display_resume_requested();
 }
