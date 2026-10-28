@@ -122,6 +122,8 @@ class Regressions20fps(unittest.TestCase):
         kernel = (SRC / "runtime/kernel.c").read_text()  # the other guest threads: at their SleepThread / yield
         sleep = kernel[kernel.index("case 0x0B: {  // SleepThread"):]
         self.assertLess(sleep.index("rt_background_wait();"), sleep.index("sched_yield()"))
+        entry = kernel[kernel.index("static void svc_entry("):]
+        self.assertLess(entry.index("rt_background_wait();"), entry.index("svc_impl("))  # every SVC (timed waits, polls)
         # the host clocks that wake the guest threads (vsync 60 Hz, audio renderer / audout) stop too
         vi = (SRC / "runtime/hle/vi.c").read_text()
         vsync = vi[vi.index("static void *vsync_thread"):]

@@ -659,6 +659,10 @@ static void *thread_dump_main(void *arg) {
 }
 
 static void svc_entry(Cpu *c, uint32_t imm, uint64_t pc) {
+    // In the background every guest thread stops at its next SVC (timed waits, polls), not only at SleepThread: one
+    // guest thread kept ~50 % of a core busy on the Fold4 through its timed waits (t_8cc15f32). Guest code holds no
+    // host lock here; one atomic read per SVC in the foreground.
+    rt_background_wait();
     if (prof_svc < 0) prof_svc = ENV("LARECOMP_PROF_SVC") != NULL;
     if (prof_svc && imm < 0x80) {
         uint64_t a0 = c->x[0], a1 = c->x[1], a2 = c->x[2], a3 = c->x[3], lr = c->x[30];
