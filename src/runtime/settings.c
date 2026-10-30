@@ -1,5 +1,9 @@
 #include "settings.h"
 
+#include <stdatomic.h>
+#ifdef __ANDROID__
+#include <sys/system_properties.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
